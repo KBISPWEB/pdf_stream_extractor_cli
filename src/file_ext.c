@@ -1,4 +1,7 @@
 #include "file_ext.h"
+
+#include <stdio.h>
+
 /*
 typedef struct ext_result {
 	size_t i;
@@ -16,6 +19,7 @@ extern ext_record_t file_ext_records[];
 size_t get_signature_length(uint16_t *signature)
 {
 	size_t i = 0;
+	uint16_t byte;
 
 	if (!signature)
 		return 0;
@@ -44,16 +48,14 @@ int check_data_against_signature(uint8_t *data, uint16_t *signature)
 	return 0;
 }
 
-ext_result_t *ext_guess_extension(ext_result_t *result, uint8_t *data,
-				  size_t length)
+char *ext_guess_extension(ext_result_t *result, uint8_t *data, size_t length)
 {
 	ext_record_t *recordp;
 	size_t offset;
 	uint16_t *signature;
 	char *extension;
 
-	/* *recordp == 0 literally means .offsets is NULL */
-	while (*(recordp = &(file_ext_records[result->i++]))) {
+	while ((recordp = &(file_ext_records[result->i++]))->offsets != NULL) {
 		while ((offset = recordp->offsets[result->offsets_i++]) !=
 		       EXT_OFFSET_STOP) {
 			if (offset < length) {
@@ -61,11 +63,11 @@ ext_result_t *ext_guess_extension(ext_result_t *result, uint8_t *data,
 						recordp->signatures
 							[result->signatures_i++])) {
 					/* make sure we have enough space */
-					if ((get_signature_length + offset) <
-					    length) {
+					if ((get_signature_length(signature) +
+					     offset) <= length) {
 						/* if signature at offset matches, loop through
 						 * available extensions!
-				 	 	*/
+				 	 	 */
 						if ((check_data_against_signature(
 							    &(data[offset]),
 							    signature)) &&
@@ -77,7 +79,10 @@ ext_result_t *ext_guess_extension(ext_result_t *result, uint8_t *data,
 							result->i--;
 							result->offsets_i--;
 							result->signatures_i--;
-							return result;
+							return file_ext_records[result->i]
+								.extensions
+									[result->extensions_i -
+									 1];
 						}
 					}
 					result->extensions_i = 0;
@@ -92,12 +97,4 @@ ext_result_t *ext_guess_extension(ext_result_t *result, uint8_t *data,
 	 * return NOT OK
 	 */
 	return NULL;
-}
-
-char *get_extension_from_result(ext_result_t *result)
-{
-	if ((!result) || (result->extensions_i == 0))
-		return NULL;
-
-	return file_ext_records[result->i].extensions[result->extensions_i - 1];
 }

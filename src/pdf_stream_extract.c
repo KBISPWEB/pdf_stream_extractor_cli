@@ -5,19 +5,34 @@
 
 ext_record_t file_ext_records[] = {
 	{
-		.offsets = { 0, EXT_OFFSET_STOP },
-		.signatures = { { 0x30, 0x26, 0xb2, 0x75, 0x8e, 0x66, 0xcf,
-				  EXT_BYTE_STOP },
-				NULL },
-		.extensions = { "asf", "wma", "wmv", NULL },
+		.offsets = (size_t[]){ 0, EXT_OFFSET_STOP },
+		.signatures =
+			(uint16_t *[]){ (uint16_t[]){ 0x30, 0x26, 0xb2, 0x75,
+						      0x8e, 0x66, 0xcf,
+						      EXT_BYTE_STOP },
+					NULL },
+		.extensions = (char *[]){ "asf", "wma", "wmv", NULL },
 	},
 	0 /* THIS IS NECESSARY */
 };
 
-ext_result_t ext_result = { 0 }; /* THIS IS ALSO NECESSARY */
-
 int main(int argc, char **argv)
 {
+	ext_result_t ext_result = { 0 }; /* THIS IS ALSO NECESSARY */
+	char *extension;
+	size_t count = 0;
+
+	while ((extension = ext_guess_extension(
+			&ext_result,
+			(uint8_t[]){ 0x30, 0x26, 0xb2, 0x75, 0x8e, 0x66, 0xcf },
+			7))) {
+		puts(extension);
+		count++;
+	}
+
+	printf("%ld extensions found.\n", count);
+
+	return 0;
 }
 
 // using System; /* Console, String */

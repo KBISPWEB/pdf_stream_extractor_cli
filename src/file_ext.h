@@ -22,7 +22,6 @@ typedef struct ext_result {
 #define EXT_BYTE_STOP (uint16_t)(-1)
 #define EXT_BYTE_ANY (uint16_t)(-2)
 
-int ext_guess_extension(ext_result_t *result, uint8_t *data, size_t length);
-char *get_extension_from_result(ext_result_t *result);
+char *ext_guess_extension(ext_result_t *result, uint8_t *data, size_t length);
 
 #endif
