@@ -1,3 +1,7 @@
+################################################################################
+# C gitignore
+################################################################################
+
 # Prerequisites
 *.d
 
@@ -51,6 +55,10 @@ Module.symvers
 Mkfile.old
 dkms.conf
 
+################################################################################
+# autotools gitignore
+################################################################################
+
 # http://www.gnu.org/software/automake
 
 Makefile.in
@@ -103,3 +111,27 @@ m4/lt~obsolete.m4
 # can automatically generate from config.status script
 # (which is called by configure script))
 Makefile
+
+################################################################################
+# VIM gitignore
+################################################################################
+
+# Swap
+[._]*.s[a-v][a-z]
+!*.svg  # comment out if you don't need vector files
+[._]*.sw[a-p]
+[._]s[a-rt-v][a-z]
+[._]ss[a-gi-z]
+[._]sw[a-p]
+
+# Session
+Session.vim
+Sessionx.vim
+
+# Temporary
+.netrwhist
+*~
+# Auto-generated tag files
+tags
+# Persistent undo
+[._]*.un~
