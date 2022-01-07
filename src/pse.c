@@ -9,19 +9,17 @@
 #include <unistd.h>
 #endif
 
-#include "file_ext.h"
+#include "ext.h"
 
-ext_record_t file_ext_records[] = {
-	{
-		.offsets = (size_t[]){ 0, EXT_OFFSET_STOP },
-		.signatures =
-			(uint16_t *[]){ (uint16_t[]){ 0x30, 0x26, 0xb2, 0x75,
-						      0x8e, 0x66, 0xcf,
-						      EXT_BYTE_STOP },
-					NULL },
-		.extensions = (char *[]){ "asf", "wma", "wmv", NULL },
-	},
-	0 /* THIS IS NECESSARY */
+ext_records_t ext_records = {
+	1,
+	{ {
+		.length = 7,
+		.signature = (uint16_t[]){ 0x30, 0x26, 0xb2, 0x75, 0x8e, 0x66,
+					   0xcf },
+		.offsets = { 1, (size_t[]){ 0 } },
+		.extensions = { 3, (char *[]){ "asf", "wma", "wmv" } },
+	} }
 };
 
 int main(int argc, char **argv)
