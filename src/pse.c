@@ -11,6 +11,7 @@
 #include <unistd.h>
 #endif
 
+#include "zlib/zlib.h"
 #include "ext.h"
 
 ext_records_t ext_records = {
@@ -32,7 +33,7 @@ char *get_file_extension(uint8_t *data, size_t size)
 	extensions = ext_get_extensions(&sample);
 
 	if (extensions != NULL) {
-		return extensions.ext[0];
+		return extensions->ext[0];
 	}
 
 	return "unknown";
@@ -44,7 +45,15 @@ int main(int argc, char **argv)
 	FILE *fp;
 
 #define BUFFER_LEN 6
-	char buffer[BUFFER_LEN];
+	char buffer_in[BUFFER_LEN];
+	char buffer_out[BUFFER_LEN];
+
+	z_stream infstream = { 0 }; /* zero-init so pointers are null */
+
+	infstream.next_in = (Bytef *)buffer_in; /* input char buffer */
+	infstream.avail_in = (uInt)BUFFER_LEN; /* size of input buffer */
+	infstream.next_out = (Bytef *)buffer_out; /* output char array */
+	infstream.avail_out = (uInt)BUFFER_LEN; /* size of output */
 
 	if (argc <= 1) {
 		fputs("You must specify a PDF file from which to extract stream data.\n",
