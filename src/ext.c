@@ -74,6 +74,27 @@ char *ext_guess_extension(ext_result_t *result, uint8_t *data, size_t length)
 	}
 }
 
-size_t ext_sample_size()
+size_t ext_max_sample_size()
 {
+	size_t i = 0, oi = 0, max = 0, len = 0;
+
+	ext_signature_t *signature;
+
+	if (data == NULL) {
+		i = result->i;
+		oi = result->offs_i;
+		ei = result->exts_i;
+	}
+
+	for (; i < ext_records.length; i++) {
+		signature = &(ext_records.e[i]);
+
+		for (; oi < signature->offsets.length; oi++) {
+			len = length + signature->offsets.e[oi];
+			if (len > max)
+				max = len;
+		}
+	}
+
+	return max;
 }

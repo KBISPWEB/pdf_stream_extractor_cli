@@ -35,6 +35,6 @@ typedef struct ext_result {
 #define EXT_BYTE_ANY (uint16_t)(-1)
 
 char *ext_guess_extension(ext_result_t *result, uint8_t *data, size_t length);
-size_t ext_sample_size();
+size_t ext_max_sample_size();
 
 #endif
