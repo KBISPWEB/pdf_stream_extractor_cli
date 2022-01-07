@@ -23,18 +23,22 @@ int ext_check_data_against_signature(uint8_t *data, ext_signature_t *signature)
 	return 0;
 }
 
-char *ext_guess_extension(ext_result_t *result, uint8_t *data, size_t length)
+char *ext_guess_extension(ext_result_t *result, ext_sample_t *sample)
 {
 	size_t i = 0, oi = 0, ei = 0;
+
+	static ext_sample_t *__sample;
 
 	ext_signature_t *signature;
 
 	size_t offset;
 
-	if (data == NULL) {
+	if (sample == NULL) {
 		i = result->i;
 		oi = result->offs_i;
 		ei = result->exts_i;
+	} else {
+		__sample = sample;
 	}
 
 	for (; i < ext_records.length; i++) {
@@ -46,17 +50,17 @@ char *ext_guess_extension(ext_result_t *result, uint8_t *data, size_t length)
 			/* if offset is bigger than sample length,
 			 * skip signature check
 			 */
-			if (offset >= length)
+			if (offset >= __sample->length)
 				continue;
 
 			/* if length of signature is bigger than
 			 * the sample, skip signature check
 			 */
-			if ((signature->length + offset) > length)
+			if ((signature->length + offset) > __sample->length)
 				continue;
 
-			if (ext_check_data_against_signature(data + offset,
-							     signature)) {
+			if (ext_check_data_against_signature(
+				    __sample->sample + offset, signature)) {
 				/* signature checks out;
 				 * select next extension and return
 				 */
@@ -64,8 +68,8 @@ char *ext_guess_extension(ext_result_t *result, uint8_t *data, size_t length)
 					/* preserve current indexes */
 					result->i = i;
 					result->offs_i = oi;
-					result->exts_i = ++ei;
-					return signature->extensions.e[ei - 1];
+					result->exts_i = ei + 1;
+					return signature->extensions.e[ei];
 				}
 				ei = 0;
 			}
@@ -80,17 +84,11 @@ size_t ext_max_sample_size()
 
 	ext_signature_t *signature;
 
-	if (data == NULL) {
-		i = result->i;
-		oi = result->offs_i;
-		ei = result->exts_i;
-	}
-
 	for (; i < ext_records.length; i++) {
 		signature = &(ext_records.e[i]);
 
 		for (; oi < signature->offsets.length; oi++) {
-			len = length + signature->offsets.e[oi];
+			len = signature->length + signature->offsets.e[oi];
 			if (len > max)
 				max = len;
 		}

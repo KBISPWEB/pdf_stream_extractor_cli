@@ -15,10 +15,10 @@ ext_records_t ext_records = {
 	1,
 	{ {
 		.length = 7,
-		.signature = _SIGNATURE_A(
-			{ 0x30, 0x26, 0xb2, 0x75, 0x8e, 0x66, 0xcf }),
-		.offsets = { 1, _OFFSET_A({ 0 }) },
-		.extensions = { 3, _EXTENSION_A({ "asf", "wma", "wmv" }) },
+		.signature = (_SIGNATURE_A){ 0x30, 0x26, 0xb2, 0x75, 0x8e, 0x66,
+					     0xcf },
+		.offsets = { 1, (_OFFSET_A){ 0 } },
+		.extensions = { 3, (_EXTENSION_A){ "asf", "wma", "wmv" } },
 	} }
 };
 
@@ -27,13 +27,16 @@ int main(int argc, char **argv)
 	ext_result_t ext_result = { 0 }; /* THIS IS ALSO NECESSARY */
 	char *extension;
 	size_t count = 0;
+	uint8_t data[] = { 0x30, 0x26, 0xb2, 0x75, 0x8e, 0x66, 0xcf };
+	ext_sample_t sample = { sizeof(data), data };
 
-	while ((extension = ext_guess_extension(
-			&ext_result,
-			(uint8_t[]){ 0x30, 0x26, 0xb2, 0x75, 0x8e, 0x66, 0xcf },
-			7))) {
-		puts(extension);
-		count++;
+	extension = ext_guess_extension(&ext_result, &sample);
+
+	if (extension != NULL) {
+		do {
+			puts(extension);
+			count++;
+		} while (ext_guess_extension(&ext_result, NULL));
 	}
 
 	printf("%ld extensions found.\n", count);
