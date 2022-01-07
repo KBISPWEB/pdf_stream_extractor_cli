@@ -15,10 +15,10 @@ ext_records_t ext_records = {
 	1,
 	{ {
 		.length = 7,
-		.signature = (uint16_t[]){ 0x30, 0x26, 0xb2, 0x75, 0x8e, 0x66,
-					   0xcf },
-		.offsets = { 1, (size_t[]){ 0 } },
-		.extensions = { 3, (char *[]){ "asf", "wma", "wmv" } },
+		.signature = _SIGNATURE_A(
+			{ 0x30, 0x26, 0xb2, 0x75, 0x8e, 0x66, 0xcf }),
+		.offsets = { 1, _OFFSET_A({ 0 }) },
+		.extensions = { 3, _EXTENSION_A({ "asf", "wma", "wmv" }) },
 	} }
 };
 

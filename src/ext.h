@@ -17,6 +17,10 @@ typedef struct ext_signature {
 	uint16_t *signature;
 } ext_signature_t;
 
+#define _SIGNATURE_A(X) (uint16_t[])(X)
+#define _OFFSET_A(X) (size_t[])(X)
+#define _EXTENSION_A(X) (char *[])(X)
+
 typedef struct ext_records {
 	size_t length;
 	ext_signature_t e[];
