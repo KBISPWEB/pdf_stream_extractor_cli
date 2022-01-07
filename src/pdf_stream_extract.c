@@ -1,5 +1,13 @@
 ﻿#include <stdio.h>
+#include <config.h>
+
+#ifdef PSEC_OS_WINDOWS
 #include <fileapi.h>
+#endif
+
+#ifdef PSEC_OS_LINUX
+#include <unistd.h>
+#endif
 
 #include "file_ext.h"
 
