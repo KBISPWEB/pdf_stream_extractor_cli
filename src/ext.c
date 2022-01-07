@@ -23,26 +23,24 @@ int ext_check_data_against_signature(uint8_t *data, ext_signature_t *signature)
 	return 0;
 }
 
-char *ext_guess_extension(ext_result_t *result, ext_sample_t *sample)
+ext_extensions_t *ext_get_extensions(ext_sample_t *sample)
 {
-	size_t i = 0, oi = 0, ei = 0;
-
+	static size_t i;
+	static size_t oi;
 	static ext_sample_t *__sample;
 
 	ext_signature_t *signature;
 
 	size_t offset;
 
-	if (sample == NULL) {
-		i = result->i;
-		oi = result->offs_i;
-		ei = result->exts_i;
-	} else {
+	if (sample != NULL) {
 		__sample = sample;
+		i = 0;
+		oi = 0;
 	}
 
 	for (; i < ext_records.length; i++) {
-		signature = &(ext_records.e[i]);
+		signature = &(ext_records.signatures[i]);
 
 		for (; oi < signature->offsets.length; oi++) {
 			offset = signature->offsets.e[oi];
@@ -61,17 +59,7 @@ char *ext_guess_extension(ext_result_t *result, ext_sample_t *sample)
 
 			if (ext_check_data_against_signature(
 				    __sample->sample + offset, signature)) {
-				/* signature checks out;
-				 * select next extension and return
-				 */
-				if (ei < signature->extensions.length) {
-					/* preserve current indexes */
-					result->i = i;
-					result->offs_i = oi;
-					result->exts_i = ei + 1;
-					return signature->extensions.e[ei];
-				}
-				ei = 0;
+				return &(signature->extensions);
 			}
 		}
 		oi = 0;
@@ -87,7 +75,7 @@ size_t ext_max_sample_size()
 	ext_signature_t *signature;
 
 	for (; i < ext_records.length; i++) {
-		signature = &(ext_records.e[i]);
+		signature = &(ext_records.signatures[i]);
 
 		for (; oi < signature->offsets.length; oi++) {
 			len = signature->length + signature->offsets.e[oi];

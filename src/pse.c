@@ -24,19 +24,20 @@ ext_records_t ext_records = {
 
 int main(int argc, char **argv)
 {
-	ext_result_t ext_result = { 0 }; /* THIS IS ALSO NECESSARY */
-	char *extension;
-	size_t count = 0;
+	ext_extensions_t *extensions;
+	size_t i, count = 0;
 	uint8_t data[] = { 0x30, 0x26, 0xb2, 0x75, 0x8e, 0x66, 0xcf };
 	ext_sample_t sample = { sizeof(data), data };
 
-	extension = ext_guess_extension(&ext_result, &sample);
+	extensions = ext_get_extensions(&sample);
 
-	if (extension != NULL) {
+	if (extensions != NULL) {
 		do {
-			puts(extension);
-			count++;
-		} while (ext_guess_extension(&ext_result, NULL));
+			count += extensions->length;
+			for (i = 0; i < extensions->length; i++) {
+				puts(extensions->ext[i]);
+			}
+		} while ((extensions = ext_get_extensions(NULL)));
 	}
 
 	printf("%ld extensions found.\n", count);
