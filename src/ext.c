@@ -59,6 +59,7 @@ ext_extensions_t *ext_get_extensions(ext_sample_t *sample)
 
 			if (ext_check_data_against_signature(
 				    __sample->sample + offset, signature)) {
+				oi++;
 				return &(signature->extensions);
 			}
 		}
