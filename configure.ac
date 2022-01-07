@@ -29,6 +29,7 @@ AC_PROG_CC
 
 #headers
 AC_CHECK_HEADERS([inttypes.h])
+AC_CHECK_HEADERS([unistd.h])
 
 #types
 AC_TYPE_SIZE_T
