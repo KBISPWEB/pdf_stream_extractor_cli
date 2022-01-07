@@ -1,4 +1,6 @@
 ﻿#include <stdio.h>
+#include <errno.h>
+#include <string.h>
 #include <config.h>
 
 #ifdef PSEC_OS_WINDOWS
@@ -22,109 +24,64 @@ ext_records_t ext_records = {
 	} }
 };
 
-int main(int argc, char **argv)
+char *get_file_extension(uint8_t *data, size_t size)
 {
 	ext_extensions_t *extensions;
-	size_t i, count = 0;
-	uint8_t data[] = { 0x30, 0x26, 0xb2, 0x75, 0x8e, 0x66, 0xcf };
-	ext_sample_t sample = { sizeof(data), data };
+	ext_sample_t sample = { .length = size, .sample = data };
 
 	extensions = ext_get_extensions(&sample);
 
 	if (extensions != NULL) {
-		do {
-			count += extensions->length;
-			for (i = 0; i < extensions->length; i++) {
-				puts(extensions->ext[i]);
-			}
-		} while ((extensions = ext_get_extensions(NULL)));
+		return extensions.ext[0];
 	}
 
-	printf("%ld extensions found.\n", count);
+	return "unknown";
+}
+
+int main(int argc, char **argv)
+{
+	int i;
+	FILE *fp;
+
+#define BUFFER_LEN 6
+	char buffer[BUFFER_LEN];
+
+	if (argc <= 1) {
+		fputs("You must specify a PDF file from which to extract stream data.\n",
+		      stderr);
+		return 1;
+	}
+
+	/* Every parameter specifies a file name */
+	for (i = 1; i < argc; i++) {
+		if (!(fp = fopen(argv[i], "rb"))) {
+			fputs(strerror(errno), stderr);
+			return 1;
+		}
+
+		/* check file signature */
+		if (fread(buffer, sizeof(char), BUFFER_LEN, fp) <= BUFFER_LEN) {
+			fprintf(stderr, "%s is not a PDF file.", argv[i]);
+			return 1;
+		}
+
+		if (strcmp("%PDF-", buffer)) {
+			fprintf(stderr, "%s is not a PDF file.", argv[i]);
+			return 1;
+		}
+
+		/* While we find stream data, process it */
+
+		// TODO: find beginning of streamdata
+
+		// Regex rx = new Regex(@".*?FlateDecode.*?stream(?<data>.*?)endstream", RegexOptions.Singleline);
+		// GroupCollection groups = match.Groups;
+		// groups["data"].Value
+
+		// TODO: uncompress raw data using zlib
+		// TODO: determine filetype from uncompressed data
+		// TODO: save uncompressed data with file extension matching filetype
+	}
 
 	return 0;
 }
-
-// using System; /* Console, String */
-// using System.IO; /* File, FileStream */
-// using System.Text.RegularExpressions; /* Regex, RegexOptions, MatchCollection, Match, GroupCollection */
-// using ICSharpCode.SharpZipLib.Zip.Compression;
-// using System.Runtime.InteropServices;
-//
-// class Program
-//{
-//	[DllImport(@"urlmon.dll", CharSet = CharSet.Auto)]
-//	private extern static uint FindMimeFromData(
-//		uint pBC,
-//		[MarshalAs(UnmanagedType.LPStr)] string pwzUrl,
-//		[MarshalAs(UnmanagedType.LPArray)] byte[] pBuffer,
-//		uint cbSize,
-//		[MarshalAs(UnmanagedType.LPStr)] string pwzMimeProposed,
-//		uint dwMimeFlags,
-//		out uint ppwzMimeOut,
-//		uint dwReserverd
-//	);
-//
-//	private static string GetFileExt(byte[] magicBytes)
-//	{
-//		try
-//		{
-//			System.UInt32 mimetype;
-//
-//		}
-//		catch
-//		{
-//			return @"raw";
-//		}
-//	}
-//
-//	/* Every parameter specifies a file name */
-//	static int Main(string[] args)
-//	{
-//		/* Check number of params */
-//		if (args.Length == 0)
-//		{
-//			Console.Error.WriteLine("You must specify a PDF file from which to extract stream data.");
-//			return 1;
-//		}
-//
-//		/* Run pipeline for each param */
-//		foreach (string arg in args)
-//		{
-//			try
-//			{
-//				/* Check if file exists */
-//				if (!File.Exists(arg))
-//					throw new FileNotFoundException(arg + " not found");
-//
-//				/* read whole file for processing */
-//				string s = File.ReadAllText(arg);
-//
-//				/* check file type by signature (magic bytes) */
-//				if (!s.StartsWith("%PDF-"))
-//					throw new Exception(arg + " is not a PDF file.");
-//
-//				/* This regex should match all FlateDecode streams and return the stream data */
-//				Regex rx = new Regex(@".*?FlateDecode.*?stream(?<data>.*?)endstream", RegexOptions.Singleline);
-//
-//				MatchCollection matches = rx.Matches(s);
-//
-//				foreach (Match match in matches)
-//				{
-//					GroupCollection groups = match.Groups;
-//					// groups["data"].Value
-//					// TODO: uncompress raw data using zlib
-//					// TODO: determine filetype from uncompressed data
-//					// TODO: save uncompressed data with file extension matching filetype
-//				}
-//			}
-//			catch (Exception e)
-//			{
-//				Console.Error.WriteLine(e.ToString());
-//			}
-//		}
-//
-//		return 0;
-//	}
-// }
-//
