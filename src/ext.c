@@ -76,6 +76,8 @@ char *ext_guess_extension(ext_result_t *result, ext_sample_t *sample)
 		}
 		oi = 0;
 	}
+
+	return NULL;
 }
 
 size_t ext_max_sample_size()
