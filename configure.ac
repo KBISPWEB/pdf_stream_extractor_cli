@@ -13,6 +13,8 @@ AS_CASE(["$host_os"],
     OS_VERSION=windows
     AC_DEFINE([PSEC_OS_WINDOWS], [],
       [Defined if the target OS is Windows])
+    AC_CHECK_HEADERS([fileapi.h], [],
+      [AC_MSG_ERROR([fileapi.h not found but is required for $host_os. Is your build host set correctly?])], [])
   ],
   [AC_MSG_WARN([unsupported system: $host_os])]
 )
@@ -21,7 +23,6 @@ AM_CONDITIONAL([HOST_WINDOWS], [test "x$OS_VERSION" = "xwindows"])
 #autoconf stuff
 AM_INIT_AUTOMAKE([foreign -Wall -Werror])
 AC_CONFIG_SRCDIR([src/])
-AC_CONFIG_SRCDIR([src/zlib-1.2.11])
 AC_CONFIG_HEADERS([config.h])
 
 #program config
@@ -64,5 +65,5 @@ AC_CHECK_FUNCS([strdup])
 AC_CHECK_FUNCS([strrchr])
 AC_CHECK_FUNCS([utime])
 
-AC_CONFIG_FILES([Makefile src/Makefile src/zlib-1.2.11/Makefile])
+AC_CONFIG_FILES([Makefile src/Makefile src/zlib/Makefile src/ext/Makefile])
 AC_OUTPUT
