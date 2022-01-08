@@ -12,7 +12,7 @@
 #endif
 
 #include "zlib/zlib.h"
-#include "ext.h"
+#include "ext/ext.h"
 
 ext_records_t ext_records = {
 	1,
@@ -44,7 +44,7 @@ int main(int argc, char **argv)
 	int i;
 	FILE *fp;
 
-#define BUFFER_LEN 6
+#define BUFFER_LEN 128
 	char buffer_in[BUFFER_LEN];
 	char buffer_out[BUFFER_LEN];
 
@@ -69,12 +69,12 @@ int main(int argc, char **argv)
 		}
 
 		/* check file signature */
-		if (fread(buffer, sizeof(char), BUFFER_LEN, fp) <= BUFFER_LEN) {
+		if (fread(buffer_in, sizeof(char), 5, fp) <= 5) {
 			fprintf(stderr, "%s is not a PDF file.", argv[i]);
 			return 1;
 		}
 
-		if (strcmp("%PDF-", buffer)) {
+		if (strcmp("%PDF-", buffer_in)) {
 			fprintf(stderr, "%s is not a PDF file.", argv[i]);
 			return 1;
 		}
