@@ -1,7 +1,5 @@
 ﻿#include <stdio.h>
-#include <errno.h>
-#include <string.h>
-#include <config.h>
+#include "config.h"
 
 #ifdef PSEC_OS_WINDOWS
 #include <fileapi.h>
@@ -11,7 +9,10 @@
 #include <unistd.h>
 #endif
 
-#include "zlib/zlib.h"
+#include <errno.h>
+#include <string.h>
+#include <zlib.h>
+
 #include "ext/ext.h"
 #include "ioutils/ioutils.h"
 
