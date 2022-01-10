@@ -69,8 +69,8 @@ int main(int argc, char **argv)
 		}
 
 		/* check file signature */
-		if (fread(buffer_in, sizeof(char), 5, fp) <= 5) {
-			fprintf(stderr, "%s is not a PDF file. It's too short.",
+		if (fread(buffer_in, sizeof(char), 10, fp) < 10) {
+			fprintf(stderr, "%s is too short to be a PDF file.",
 				argv[i]);
 			return 1;
 		}
