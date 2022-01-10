@@ -1,7 +1,7 @@
 # PDF Stream Extractor CLI
 
 ## Description
-A command-line tool for extracting every single FlateDecode data stream from within a PDF and saves it to a file. Useful for when the usual tools don't extract what you want.
+A command-line tool which extracts and decodes every single FlateDecode stream from within a PDF and saves it to a file. Useful for when the usual tools aren't able to extract what you want.
 
 This tool attempts to figure out what kind of data was in the FlateDecode stream by matching file signatures. If it's able to determine file type, the data will be saved with the appropriate file extension.
 
