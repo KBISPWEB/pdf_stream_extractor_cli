@@ -1,4 +1,4 @@
-SUBDIRS = zlib ext
+SUBDIRS = ext ioutils
 bin_PROGRAMS = $(top_builddir)/bin/psec
 __top_builddir__bin_psec_SOURCES = pse.c
-__top_builddir__bin_psec_LDADD = zlib/libz.a ext/libext.a
+__top_builddir__bin_psec_LDADD = ext/libext.a ioutils/libioutils.a -lregex

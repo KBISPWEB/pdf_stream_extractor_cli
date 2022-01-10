@@ -13,8 +13,9 @@ AS_CASE(["$host_os"],
     OS_VERSION=windows
     AC_DEFINE([PSEC_OS_WINDOWS], [],
       [Defined if the target OS is Windows])
-    AC_CHECK_HEADERS([fileapi.h], [],
-      [AC_MSG_ERROR([fileapi.h not found but is required for $host_os. Is your build host set correctly?])], [])
+    AC_CHECK_HEADERS([fileapi.h], [], [
+      AC_MSG_ERROR([fileapi.h not found but is required for $host_os. Is your build host set correctly?])
+    ], [])
   ],
   [AC_MSG_WARN([unsupported system: $host_os])]
 )
@@ -23,7 +24,7 @@ AM_CONDITIONAL([HOST_WINDOWS], [test "x$OS_VERSION" = "xwindows"])
 #autoconf stuff
 AM_INIT_AUTOMAKE([foreign -Wall -Werror])
 AC_CONFIG_SRCDIR([src/])
-AC_CONFIG_HEADERS([config.h])
+AC_CONFIG_HEADERS([src/config.h])
 
 #program config
 AC_PROG_CC
@@ -40,8 +41,12 @@ AC_CHECK_HEADER_STDBOOL
 AC_CHECK_HEADERS([inttypes.h])
 AC_CHECK_HEADERS([unistd.h])
 AC_CHECK_HEADERS([fcntl.h])
-AC_CHECK_HEADERS([malloc.h])
-AC_CHECK_HEADERS([utime.h])
+AC_CHECK_HEADER([zlib.h], [], [
+  AC_MSG_ERROR([zlib.h not found but is required. Make sure it's installed for $host.])
+], [])
+AC_CHECK_HEADER([regex.h], [], [
+  AC_MSG_ERROR([regex.h not found but is required. Make sure it's installed for $host.])
+], [])
 
 #types
 AC_TYPE_SIZE_T
@@ -68,7 +73,6 @@ AC_CHECK_FUNCS([utime])
 AC_CONFIG_FILES([
   Makefile
   src/Makefile
-  src/zlib/Makefile
   src/ext/Makefile
   src/ioutils/Makefile
 ])
