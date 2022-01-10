@@ -7,18 +7,15 @@ This tool attempts to figure out what kind of data was in the FlateDecode stream
 
 The relational database of file signatures to file extensions is manually programmed into this application. One day, I may restructure that to be a configuration file.
 
----
 ## Library requirements
 *(make sure you have these on your toolchain)*
 * zlib.h
 * regex.h
 
->*If you're using Arch, and compiling for windows using mingw-w64, you may find
-the following packages useful:*
-* *mingw-w64-zlib*
-* *mingw-w64-libgnurx*
+>*If you're using Arch and compiling for windows using mingw-w64, you may find the following packages useful:*
+>* *mingw-w64-zlib*
+>* *mingw-w64-libgnurx*
 
----
 ## Additional Information
 This appliction is set up to be built using autotools. You may use `autoreconf --install` to produce `./configure`. It's a good idea to use `./configure` in a `build/` subdirectory or outside of the build tree.
 
