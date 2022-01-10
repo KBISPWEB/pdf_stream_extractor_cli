@@ -65,5 +65,11 @@ AC_CHECK_FUNCS([strdup])
 AC_CHECK_FUNCS([strrchr])
 AC_CHECK_FUNCS([utime])
 
-AC_CONFIG_FILES([Makefile src/Makefile src/zlib/Makefile src/ext/Makefile])
+AC_CONFIG_FILES([
+  Makefile
+  src/Makefile
+  src/zlib/Makefile
+  src/ext/Makefile
+  src/ioutils/Makefile
+])
 AC_OUTPUT
