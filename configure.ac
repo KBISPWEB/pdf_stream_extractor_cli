@@ -24,7 +24,7 @@ AM_CONDITIONAL([HOST_WINDOWS], [test "x$OS_VERSION" = "xwindows"])
 #autoconf stuff
 AM_INIT_AUTOMAKE([foreign -Wall -Werror])
 AC_CONFIG_SRCDIR([src/])
-AC_CONFIG_HEADERS([src/config.h])
+AC_CONFIG_HEADERS([config.h])
 
 #program config
 AC_PROG_CC

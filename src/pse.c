@@ -1,5 +1,5 @@
 ﻿#include <stdio.h>
-#include "config.h"
+#include <config.h>
 
 #ifdef PSEC_OS_WINDOWS
 #include <fileapi.h>
