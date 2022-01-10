@@ -13,6 +13,7 @@
 
 #include "zlib/zlib.h"
 #include "ext/ext.h"
+#include "ioutils/ioutils.h"
 
 ext_records_t ext_records = {
 	1,
@@ -82,13 +83,16 @@ int main(int argc, char **argv)
 			return 1;
 		}
 
-		/* While we find stream data, process it */
+		/* build regex */
+		// Regex rx = new Regex(@".*?FlateDecode.*?stream(?<data>.*?)endstream", RegexOptions.Singleline);
+
+		/* build buffer */
 
 		// TODO: find beginning of streamdata
-
-		// Regex rx = new Regex(@".*?FlateDecode.*?stream(?<data>.*?)endstream", RegexOptions.Singleline);
 		// GroupCollection groups = match.Groups;
 		// groups["data"].Value
+
+		/* use fscan_reg_buffer() to get streamdata stuff */
 
 		// TODO: uncompress raw data using zlib
 		// TODO: determine filetype from uncompressed data
