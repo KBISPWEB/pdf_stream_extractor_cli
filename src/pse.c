@@ -70,12 +70,15 @@ int main(int argc, char **argv)
 
 		/* check file signature */
 		if (fread(buffer_in, sizeof(char), 5, fp) <= 5) {
-			fprintf(stderr, "%s is not a PDF file.", argv[i]);
+			fprintf(stderr, "%s is not a PDF file. It's too short.",
+				argv[i]);
 			return 1;
 		}
 
-		if (strcmp("%PDF-", buffer_in)) {
-			fprintf(stderr, "%s is not a PDF file.", argv[i]);
+		if (strncmp("%PDF-", buffer_in, 5)) {
+			fprintf(stderr,
+				"%s is not a PDF file. The file signature doesn't match.",
+				argv[i]);
 			return 1;
 		}
 
