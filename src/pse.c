@@ -16,26 +16,33 @@
 #include "ext/ext.h"
 #include "ioutils/ioutils.h"
 
-ext_records_t ext_records = {
-	1,
-	{ {
-		.length = 7,
-		.signature = (_SIGNATURE_A){ 0x30, 0x26, 0xb2, 0x75, 0x8e, 0x66,
-					     0xcf },
-		.offsets = { 1, (_OFFSET_A){ 0 } },
-		.extensions = { 3, (_EXTENSION_A){ "asf", "wma", "wmv" } },
-	} }
+ext_table_t ext_records = {
+	1, /* number of records */
+	/* start of records array */
+	{
+		/* start of record */
+		{
+			.signature = { 7, /* size of signature in bytes */
+				       /* signature data */
+				       (_SIGNATURE_A){ 0x30, 0x26, 0xb2, 0x75,
+						       0x8e, 0x66, 0xcf } },
+			.offsets = { 1, /* number of unique offsets */
+				     /* offsets array */
+				     (_OFFSET_A){ 0 } },
+			.extension = "wmv" /* file extension */
+		} /* end of record */
+	} /* end of records array */
 };
 
 char *get_file_extension(uint8_t *data, size_t size)
 {
-	ext_extensions_t *extensions;
+	char *ext;
 	ext_sample_t sample = { .length = size, .sample = data };
 
-	extensions = ext_get_extensions(&sample);
+	ext = ext_get_extension(&sample);
 
-	if (extensions != NULL) {
-		return extensions->ext[0];
+	if (ext != NULL) {
+		return ext;
 	}
 
 	return "unknown";
