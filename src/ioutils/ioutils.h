@@ -10,7 +10,7 @@ typedef struct buffer {
 	size_t nmemb; /* number of elements in buffer */
 	FILE *stream; /* the current working stream */
 
-	size_t nmemb_e; /* number of elements to expand by */
+	size_t nmemb_e; /* number of elements to expand/contract by */
 	size_t nmemb_m; /* maximum number of elements we can have */
 
 	fpos_t pos;
@@ -64,16 +64,14 @@ int ioutils_rbuf_frame_contract(buf_t *buffer);
  */
 
 /* scan stdio with regex */
-int scan_reg(regex_t *preg, size_t nmatch, regmatch_t pmatch[], int eflags);
+int scan_reg(const char *regex, size_t nmatch, regmatch_t pmatch[], int cflags,
+	     int eflags);
 
 /* scan a stream with regex */
-int fscan_reg(FILE *stream, regex_t *preg, size_t nmatch, regmatch_t pmatch[],
-	      int eflags);
+int fscan_reg(FILE *stream, const char *regex, size_t nmatch,
+	      regmatch_t pmatch[], int cflags, int eflags);
 
-/* bring your own buffer */
-int scan_reg_buffer(regex_t *preg, size_t nmatch, regmatch_t pmatch[],
-		    int eflags, buf_t *buffer);
-
-int fscan_reg_buffer(FILE *stream, regex_t *preg, size_t nmatch,
-		     regmatch_t pmatch[], int eflags, buf_t *buffer);
+/* bring your own buffer - make sure you load in the stream! */
+int scan_reg_buffer(const char *regex, size_t nmatch, regmatch_t pmatch[],
+		    int cflags, int eflags, buf_t *buffer);
 #endif

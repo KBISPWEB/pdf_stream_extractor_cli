@@ -35,9 +35,9 @@
 int ioutils_buf_init(buf_t *buffer)
 {
 	void *tmp;
-	size_t size = buffer->nmemb * buffer->size;
+	size_t size = (buffer->nmemb * buffer->size);
 
-	tmp = realloc(buffer->ptr, size);
+	tmp = realloc(buffer->ptr, size + 1);
 
 	if ((tmp == NULL) && (size != 0)) {
 		errno = ENOMEM;
@@ -45,6 +45,8 @@ int ioutils_buf_init(buf_t *buffer)
 	}
 
 	buffer->ptr = tmp;
+
+	((char *)(buffer->ptr))[size] = 0; /* null-terminate */
 
 	return 0;
 }
@@ -188,35 +190,76 @@ int ioutils_rbuf_frame_contract(buf_t *buffer)
  * SCANNING FUNCTIONS                                                         *
  ******************************************************************************/
 
-int scan_reg(regex_t *preg, size_t nmatch, regmatch_t pmatch[], int eflags)
+int scan_reg(const char *restrict regex, size_t nmatch,
+	     regmatch_t pmatch[restrict], int cflags, int eflags)
 {
-	return fscan_reg(stdin, preg, nmatch, pmatch, eflags);
+	return fscan_reg(stdin, regex, nmatch, pmatch, cflags, eflags);
 }
 
-int fscan_reg(FILE *stream, regex_t *preg, size_t nmatch, regmatch_t pmatch[],
-	      int eflags)
+int fscan_reg(FILE *stream, const char *restrict regex, size_t nmatch,
+	      regmatch_t pmatch[restrict], int cflags, int eflags)
 {
 	int ret;
 	buf_t buffer = { 0 };
 
-	ret = fscan_reg_buffer(stream, preg, nmatch, pmatch, eflags, &buffer);
+	/* initialize buffer with defaults */
+	if (ioutils_buf_init_defaults(&buffer)) {
+		/* something bad happened */
+	}
 
+	buffer.stream = stream;
+
+	ret = scan_reg_buffer(regex, nmatch, pmatch, cflags, eflags, &buffer);
+
+	/* destroy buffer */
 	ioutils_buf_free(&buffer);
 
 	return ret;
 }
 
-int scan_reg_buffer(regex_t *preg, size_t nmatch, regmatch_t pmatch[],
-		    int eflags, buf_t *buffer)
+int scan_reg_buffer(const char *restrict regex, size_t nmatch,
+		    regmatch_t pmatch[restrict], int cflags, int eflags,
+		    buf_t *buffer)
 {
-	return fscan_reg_buffer(stdin, preg, nmatch, pmatch, eflags, buffer);
-}
+	int ret = 0;
 
-int fscan_reg_buffer(FILE *stream, regex_t *preg, size_t nmatch,
-		     regmatch_t pmatch[], int eflags, buf_t *buffer)
-{
+	regex_t preg;
+	regmatch_t _pmatch[nmatch + 1];
+	int wants_matches = !(cflags & REG_NOSUB);
+
+	size_t orig_nmemb;
+
 	/* resize data frame until we find a match or run out of space */
 	/* regexec(preg, string, nmatch, pmatch, eflags); */
 
-	// TODO
+	/* compile regex */
+	if ((ret = regcomp(&preg, regex, cflags & (~REG_NOSUB))))
+		goto die_no_regex;
+
+	// TODO: this stuff
+
+	/* rewind buffer */
+	if ((ret = ioutils_rbuf_frame_rewind(buffer)))
+		goto die;
+
+	orig_nmemb = buffer->nmemb;
+
+	/* search our current frame for a regex match */
+	while (regexec(&preg, (char *)(buffer->ptr), nmatch, pmatch, eflags)) {
+		/* REG_NOMATCH, increase buffer size. */
+		if ((ret = ioutils_rbuf_frame_expand(buffer)))
+			goto die;
+	}
+
+	/* matched, reset buffer size and put location directly after our match */
+	buffer->nmemb = orig_nmemb;
+	if ((ret = ioutils_buf_init(buffer)))
+		goto die;
+	if ((ret = ioutils_rbuf_frame_seek(buffer, pmatch[0].rm_eo, SEEK_CUR)))
+		goto die;
+
+die:
+	regfree(&preg);
+die_no_regex:
+	return ret;
 }
