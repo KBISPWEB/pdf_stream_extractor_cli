@@ -13,8 +13,8 @@ The relational database of file signatures to file extensions is manually progra
 * regex.h
 
 >*If you're using Arch and compiling for windows using mingw-w64, you may find the following packages useful:*
->* *mingw-w64-zlib*
->* *mingw-w64-libgnurx*
+>* *mingw-w64-zlib <sup>AUR</sup>*
+>* *mingw-w64-libgnurx <sup>AUR</sup>*
 
 ## Additional Information
 This appliction is set up to be built using autotools. You may use `autoreconf --install` to produce `./configure`. It's a good idea to use `./configure` in a `build/` subdirectory or outside of the build tree.
