@@ -17,7 +17,7 @@
 #endif
 
 #include <filext.h>
-#include <ioutils.h>
+#include <buffer.h>
 
 #define NMATCH 1
 #define BUFFER_LEN 128
@@ -66,17 +66,17 @@ int scan_buffer(buf_t *buffer, regex_t *restrict preg,
 	/* search our current frame for a regex match */
 	while (regexec(preg, (char *)(buffer->ptr), NMATCH, pmatch, 0)) {
 		/* REG_NOMATCH, increase buffer size. */
-		if ((ret = ioutils_rbuf_frame_expand(buffer)))
+		if ((ret = buffer_rbuf_frame_expand(buffer)))
 			goto die;
 	}
 
 	/* matched, reset buffer size and put location directly after our match */
 	buffer->nmemb = orig_nmemb;
 
-	if ((ret = ioutils_buf_init(buffer)))
+	if ((ret = buffer_buf_init(buffer)))
 		goto die;
 
-	if ((ret = ioutils_rbuf_frame_seek(buffer, pmatch[0].rm_eo, SEEK_CUR)))
+	if ((ret = buffer_rbuf_frame_seek(buffer, pmatch[0].rm_eo, SEEK_CUR)))
 		goto die;
 
 die:
@@ -127,8 +127,8 @@ int main(int argc, char **argv)
 		filename = argv[i];
 
 		/* build buffer */
-		ioutils_buf_init_defaults(&buffer);
-		ioutils_rbuf_stream_open(&buffer, filename);
+		buffer_buf_init_defaults(&buffer);
+		buffer_rbuf_stream_open(&buffer, filename);
 
 		//if (!(fp = fopen(filename, "rb"))) {
 		//	fputs(strerror(errno), stderr);
@@ -145,15 +145,15 @@ int main(int argc, char **argv)
 		       NULL) {
 			/* didn't find "FlateDecode" */
 			/* advance as much as we can */
-			ioutils_rbuf_frame_seek(
+			buffer_rbuf_frame_seek(
 				&buffer, buffer.nmemb - sizeof("FlateDecode"),
 				SEEK_CUR);
 		}
 
 		/* found "FlateDecode", starting at sp */
 		/* advance up to "FlateDecode" so we have as much in frame as possible */
-		ioutils_rbuf_frame_seek(&buffer, (char *)(buffer.ptr) - sp,
-					SEEK_CUR);
+		buffer_rbuf_frame_seek(&buffer, (char *)(buffer.ptr) - sp,
+				       SEEK_CUR);
 		sp = buffer.ptr;
 
 		scan_buffer(&buffer, &preg, pmatch);

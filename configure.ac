@@ -24,7 +24,7 @@ AM_CONDITIONAL([HOST_WINDOWS], [test "x$OS_VERSION" = "xwindows"])
 
 #autoconf stuff
 AM_INIT_AUTOMAKE([foreign -Wall -Werror])
-AC_CONFIG_SUBDIRS([src/filext src/ioutils])
+AC_CONFIG_SUBDIRS([src/filext src/buffer])
 AC_CONFIG_SRCDIR([src/])
 AC_CONFIG_HEADERS([config.h])
 

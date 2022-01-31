@@ -1,5 +1,5 @@
 AC_PREREQ([2.71])
-AC_INIT([ioutils], [0.2], [bugs@kara-online.net])
+AC_INIT([buffer], [0.3], [bugs@kara-online.net])
 
 #host switch
 AC_CANONICAL_HOST
