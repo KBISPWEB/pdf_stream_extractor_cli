@@ -1,7 +1,6 @@
 #include <config.h>
 
 #include <stdio.h>
-#include <regex.h>
 
 #ifndef IOUTILS_H
 #define IOUTILS_H
@@ -55,25 +54,4 @@ int ioutils_rbuf_frame_expand(buf_t *buffer);
 /* reduce the read buffer frame size */
 int ioutils_rbuf_frame_contract(buf_t *buffer);
 
-/******************************************************************************
- * SCANNING FUNCTIONS                                                         *
- ******************************************************************************/
-
-/* Please, be mindful:
- * these scanning regex functions have buffer limitations!
- * Use scan_reg_buffer() if you need to change the buffer parameters at runtime,
- * or override the BUFFER CONTROL constants at compile time.
- */
-
-/* scan stdio with regex */
-int scan_reg(const char *regex, size_t nmatch, regmatch_t pmatch[], int cflags,
-	     int eflags);
-
-/* scan a stream with regex */
-int fscan_reg(FILE *stream, const char *regex, size_t nmatch,
-	      regmatch_t pmatch[], int cflags, int eflags);
-
-/* bring your own buffer - make sure you load in the stream! */
-int scan_reg_buffer(const char *regex, size_t nmatch, regmatch_t pmatch[],
-		    int cflags, int eflags, buf_t *buffer);
 #endif

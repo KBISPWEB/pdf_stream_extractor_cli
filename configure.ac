@@ -1,5 +1,5 @@
 AC_PREREQ([2.71])
-AC_INIT([psec], [0.1], [bugs@kara-online.net])
+AC_INIT([psec], [0.3], [bugs@kara-online.net])
 
 #host switch
 AC_CANONICAL_HOST
@@ -30,13 +30,15 @@ AC_CONFIG_HEADERS([config.h])
 
 #program config
 AC_PROG_CC
+AC_PROG_CXX
 AM_PROG_AR
+AC_PROG_RANLIB
+AC_C_RESTRICT
 
 #user and host info
 # none
 
 #headers
-AC_CHECK_HEADERS([fcntl.h])
 AC_CHECK_HEADER([regex.h], [], [
   AC_MSG_ERROR([regex.h not found but is required. Make sure it's installed for $host.])
 ], [])
@@ -47,6 +49,8 @@ AC_TYPE_UINT8_T
 
 #functions
 AC_CHECK_FUNCS([strerror])
+AC_CHECK_FUNCS([regcomp])
+AC_CHECK_FUNCS([strstr])
 
 AC_CONFIG_FILES([
   Makefile

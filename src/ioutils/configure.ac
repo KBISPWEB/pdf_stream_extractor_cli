@@ -34,16 +34,13 @@ AC_PROG_RANLIB
 # none
 
 #headers
-AC_CHECK_HEADER([regex.h], [], [
-  AC_MSG_ERROR([regex.h not found but is required. Make sure it's installed for $host.])
-], [])
+# none
 
 #types
 AC_TYPE_SIZE_T
 
 #functions
 AC_FUNC_REALLOC
-AC_CHECK_FUNCS([regcomp])
 
 AC_CONFIG_FILES([
   Makefile
