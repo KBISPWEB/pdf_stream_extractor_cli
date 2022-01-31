@@ -1,11 +1,11 @@
 ﻿#include <stdio.h>
 #include <config.h>
 
-#ifdef PSEC_OS_WINDOWS
+#ifdef OS_WINDOWS
 #include <fileapi.h>
 #endif
 
-#ifdef PSEC_OS_LINUX
+#ifdef OS_LINUX
 #include <unistd.h>
 #endif
 
@@ -13,33 +13,38 @@
 #include <string.h>
 #include <zlib.h>
 
-#include "ext/ext.h"
-#include "ioutils/ioutils.h"
+#include <filext.h>
+#include <ioutils.h>
 
-ext_table_t ext_records = {
-	1, /* number of records */
-	/* start of records array */
-	{
-		/* start of record */
-		{
-			.signature = { 7, /* size of signature in bytes */
-				       /* signature data */
-				       (_SIGNATURE_A){ 0x30, 0x26, 0xb2, 0x75,
-						       0x8e, 0x66, 0xcf } },
-			.offsets = { 1, /* number of unique offsets */
-				     /* offsets array */
-				     (_OFFSET_A){ 0 } },
-			.extension = "wmv" /* file extension */
-		} /* end of record */
-	} /* end of records array */
-};
+//filext_table_t filext_table = {
+//	1, /* number of records */
+//	/* start of records array */
+//	&(filext_record_t[]){
+//		/* start of record */
+//		{
+//			.signature = { 7, /* size of signature in bytes */
+//				       /* signature data */
+//				       &(filext_signature_t[]){
+//					       0x30, 0x26, 0xb2, 0x75, 0x8e,
+//					       0x66, 0xcf } },
+//			.offsets = { 1, /* number of unique offsets */
+//				     /* offsets array */
+//				     &(filext_offset_t[]){ 0 } },
+//			.extension = "wmv" /* file extension */
+//		} /* end of record */
+//	} /* end of records array */
+//};
 
-char *get_file_extension(uint8_t *data, size_t size)
+filext_table_t filext_records = FILEXT_TABLE(FILEXT_RECORD(
+	FILEXT_SIGNATURE(0x30, 0x26, 0xb2, 0x75, 0x8e, 0x66, 0xcf),
+	FILEXT_OFFSETS(0), "wmv"));
+
+char *get_file_filext(uint8_t *data, size_t size)
 {
 	char *ext;
-	ext_sample_t sample = { .length = size, .sample = data };
+	filext_sample_t sample = { .length = size, .sample = data };
 
-	ext = ext_get_extension(&sample);
+	ext = filext_get_filext(&sample);
 
 	if (ext != NULL) {
 		return ext;
@@ -104,7 +109,7 @@ int main(int argc, char **argv)
 
 		// TODO: uncompress raw data using zlib
 		// TODO: determine filetype from uncompressed data
-		// TODO: save uncompressed data with file extension matching filetype
+		// TODO: save uncompressed data with file filext matching filetype
 	}
 
 	return 0;
