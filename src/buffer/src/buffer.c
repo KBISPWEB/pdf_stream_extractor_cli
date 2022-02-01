@@ -26,7 +26,6 @@ void buffer_buf_construct(buf_t *buffer)
 {
 	buffer->ptr = NULL;
 	buffer->size = 0;
-	buffer->size_e = 0;
 	buffer->filedes = -1;
 	buffer->st_size = 0;
 	buffer->actual_pos = 0;
@@ -140,7 +139,7 @@ int buffer_buf_frame_rewind(buf_t *buffer)
 /**
  * open a file readonly (for rbuf functions)
  */
-int buffer_rbuf_open(buf_t *buffer, const char *path)
+int buffer_rbuf_open(rbuf_t *buffer, const char *path)
 {
 #if defined(OS_LINUX)
 	struct stat buf;
@@ -164,7 +163,7 @@ int buffer_rbuf_open(buf_t *buffer, const char *path)
  * load the current frame at the real file offset (modifies file offset, no seek)
  * Acts like a pager
  */
-int buffer_rbuf_frame_load(buf_t *buffer)
+int buffer_rbuf_frame_load(rbuf_t *buffer)
 {
 	ssize_t bytes_read;
 
@@ -191,9 +190,9 @@ int buffer_rbuf_frame_load(buf_t *buffer)
 /**
  * seeks and refreshes the current frame
  */
-int buffer_rbuf_frame_seek(buf_t *buffer, off_t offset, int whence)
+int buffer_rbuf_frame_seek(rbuf_t *buffer, off_t offset, int whence)
 {
-	if (buffer_buf_frame_seek(buffer, offset, whence))
+	if (buffer_buf_frame_seek((buf_t *)buffer, offset, whence))
 		return -1;
 
 	return buffer_rbuf_frame_load(buffer);
@@ -202,9 +201,9 @@ int buffer_rbuf_frame_seek(buf_t *buffer, off_t offset, int whence)
 /**
  * rewinds and refreshes the current frame
  */
-int buffer_rbuf_frame_rewind(buf_t *buffer)
+int buffer_rbuf_frame_rewind(rbuf_t *buffer)
 {
-	if (buffer_buf_frame_rewind(buffer))
+	if (buffer_buf_frame_rewind((buf_t *)buffer))
 		return -1;
 
 	return buffer_rbuf_frame_load(buffer);
@@ -213,73 +212,73 @@ int buffer_rbuf_frame_rewind(buf_t *buffer)
 /**
  * reload the current frame at the current position (doesn't modify file offset)
  */
-int buffer_rbuf_frame_reload(buf_t *buffer)
+int buffer_rbuf_frame_reload(rbuf_t *buffer)
 {
 	return buffer_rbuf_frame_seek(buffer, buffer->pos, SEEK_SET);
 }
 
 /**
- * expand the current frame by the expansion value in the struct
- */
-int buffer_rbuf_frame_expand(buf_t *buffer)
-{
-	size_t new_size;
-
-	new_size = buffer->size + buffer->size_e;
-
-	/* only allowed to increase in size */
-	if (new_size < buffer->size) {
-		errno = EOVERFLOW;
-		return -1;
-	}
-
-	buffer->size = new_size;
-
-	if (buffer_buf_init(buffer))
-		return -1;
-
-	if (buffer_rbuf_frame_reload(buffer))
-		return -1;
-
-	return 0;
-}
-
-/**
- * contracts the current frame by the expansion value in the struct
- */
-int buffer_rbuf_frame_contract(buf_t *buffer)
-{
-	size_t new_size;
-
-	new_size = buffer->size + buffer->size_e;
-
-	/* only allowed to decrease in size */
-	if (new_size > buffer->size) {
-		errno = EOVERFLOW;
-		return -1;
-	}
-
-	buffer->size = new_size;
-
-	if (buffer_buf_init(buffer))
-		return -1;
-
-	if (buffer_rbuf_frame_reload(buffer))
-		return -1;
-
-	return 0;
-}
-
-/**
  * resets the position and size of the frame
  */
-int buffer_rbuf_frame_reset(buf_t *buffer)
+int buffer_rbuf_frame_reset(rbuf_t *buffer)
 {
-	if (buffer_buf_init_defaults(buffer))
+	if (buffer_buf_init_defaults((buf_t *)buffer))
 		return -1;
 
 	if (buffer_rbuf_frame_reload(buffer))
 		return -1;
+
+	return 0;
+}
+
+/**
+ * open a file writeonly (for wbuf functions)
+ */
+int buffer_wbuf_open(wbuf_t *buffer, const char *path)
+{
+#if defined(OS_LINUX)
+	struct stat buf;
+
+	if ((buffer->filedes = open(path, O_WRONLY)) == -1)
+		return -1;
+
+	if (stat(path, &buf))
+		return -1;
+
+	buffer->st_size = buf.st_size;
+#else
+	errno = ENOSYS;
+	return -1;
+#endif
+
+	return buffer_buf_frame_rewind((but_t *)buffer);
+}
+
+/**
+ * commit the current frame at the real file offset (modifies file offset and st_size, no seek)
+ * Acts like a pager
+ */
+int buffer_wbuf_frame_commit(wbuf_t *buffer)
+{
+	// TODO: WRITE, DON'T READ.
+	ssize_t bytes_read;
+
+	buffer->pos = buffer->actual_pos;
+
+#if defined(OS_LINUX)
+	if ((bytes_read = read(buffer->filedes, buffer->ptr, buffer->size)) ==
+	    -1)
+		return -1;
+#else
+	errno = ENOSYS;
+	return -1;
+#endif
+	if (bytes_read < buffer->size) {
+		*((char *)(buffer->ptr + bytes_read)) = 0;
+		// maybe set an EOF flag?
+	}
+
+	buffer->actual_pos = buffer->pos + bytes_read;
 
 	return 0;
 }

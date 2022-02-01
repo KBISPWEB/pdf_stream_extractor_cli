@@ -8,14 +8,37 @@
 typedef struct buffer {
 	void *ptr; /* the working buffer */
 	size_t size; /* size of the buffer in bytes */
-	size_t size_e; /* number of bytes to expand/contract the buffer by */
 
 	int filedes; /* the current working stream */
 	off_t st_size; /* the total size of the file */
 
 	off_t actual_pos; /* the real offset in the file */
-	off_t pos; /* the current position of the frame (might not be the actual offset) */
+	off_t pos; /* the current position of the frame */
 } buf_t;
+
+typedef buf_t rwbuf_t;
+
+typedef struct buffer {
+	void *ptr; /* the working buffer */
+	size_t size; /* size of the buffer in bytes */
+
+	const int filedes; /* the current working stream */
+	const off_t st_size; /* the total size of the file */
+
+	off_t actual_pos; /* the real offset in the file */
+	off_t pos; /* the current position of the frame */
+} rbuf_t;
+
+typedef struct buffer {
+	void *ptr; /* the working buffer */
+	size_t size; /* size of the buffer in bytes */
+
+	const int filedes; /* the current working stream */
+	off_t st_size; /* the total size of the file */
+
+	const off_t actual_pos; /* the real offset in the file */
+	const off_t pos; /* the current position of the frame */
+} wbuf_t;
 
 /**
  * construct a new buffer structure to be "nothing"
@@ -79,7 +102,7 @@ int buffer_buf_frame_rewind(buf_t *buffer);
  * @param  path                 path to file
  * @return        0 on success, -1 on failure (see errno)
  */
-int buffer_rbuf_open(buf_t *buffer, const char *path);
+int buffer_rbuf_open(rbuf_t *buffer, const char *path);
 
 /**
  * load the current frame at the real file offset (modifies file offset, no seek)
@@ -87,48 +110,50 @@ int buffer_rbuf_open(buf_t *buffer, const char *path);
  * @param  buffer               [description]
  * @return        0 on success, -1 on failure (see errno)
  */
-int buffer_rbuf_frame_load(buf_t *buffer);
+int buffer_rbuf_frame_load(rbuf_t *buffer);
 
 /**
  * seeks and refreshes the current frame
  * @param  buffer               [description]
  * @return        0 on success, -1 on failure (see errno)
  */
-int buffer_rbuf_frame_seek(buf_t *buffer, off_t offset, int whence);
+int buffer_rbuf_frame_seek(rbuf_t *buffer, off_t offset, int whence);
 
 /**
  * rewinds and refreshes the current frame
  * @param  buffer               [description]
  * @return        0 on success, -1 on failure (see errno)
  */
-int buffer_rbuf_frame_rewind(buf_t *buffer);
+int buffer_rbuf_frame_rewind(rbuf_t *buffer);
 
 /**
  * reload the current frame at the current position (doesn't modify file offset)
  * @param  buffer               [description]
  * @return        0 on success, -1 on failure (see errno)
  */
-int buffer_rbuf_frame_reload(buf_t *buffer);
-
-/**
- * expand the current frame by the expansion value in the struct
- * @param  buffer               [description]
- * @return        0 on success, -1 on failure (see errno)
- */
-int buffer_rbuf_frame_expand(buf_t *buffer);
-
-/**
- * contracts the current frame by the expansion value in the struct
- * @param  buffer               [description]
- * @return        0 on success, -1 on failure (see errno)
- */
-int buffer_rbuf_frame_contract(buf_t *buffer);
+int buffer_rbuf_frame_reload(rbuf_t *buffer);
 
 /**
  * resets the position and size of the frame
  * @param  buffer               [description]
  * @return        0 on success, -1 on failure (see errno)
  */
-int buffer_rbuf_frame_reset(buf_t *buffer);
+int buffer_rbuf_frame_reset(rbuf_t *buffer);
+
+/**
+ * open a file writeonly (for wbuf functions)
+ * @param  buffer               [description]
+ * @param  path                 path to file (doesn't have to exist)
+ * @return        0 on success, -1 on failure (see errno)
+ */
+int buffer_wbuf_open(wbuf_t *buffer, const char *path);
+
+/**
+ * commit the current frame at the real file offset (modifies file offset and st_size, no seek)
+ * Acts like a pager
+ * @param  buffer               [description]
+ * @return        0 on success, -1 on failure (see errno)
+ */
+int buffer_wbuf_frame_commit(wbuf_t *buffer);
 
 #endif
