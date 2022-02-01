@@ -1,187 +1,259 @@
+#include "buffer.h"
+
 #include <errno.h>
 #include <stdlib.h>
 
-#include "buffer.h"
-
-/******************************************************************************
- * BUFFER CONTROL                                                             *
- ******************************************************************************/
+#ifdef OS_LINUX
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
+#endif
 
 /* defaults - you can override these when building this library */
-#ifndef BUFFER_BUFFER_SIZE
-/* size of data - default 1 byte */
-#define BUFFER_BUFFER_SIZE 1
+
+#ifndef BUFFER_DEFAULT_SIZE
+/* default frame size - default 1KiB */
+#define BUFFER_DEFAULT_SIZE 1023
 #endif
 
-#ifndef BUFFER_BUFFER_CHUNK
-/* size of chunk - default 1KiB */
-#define BUFFER_BUFFER_CHUNK 1024
+#ifndef BUFFER_DEFAULT_EXPAND
+/* default frame expansion - default 1KiB */
+#define BUFFER_DEFAULT_EXPAND 1023
 #endif
 
-#ifndef BUFFER_BUFFER_INITIAL
-/* initial number of chunks - default 1 (1KiB) */
-#define BUFFER_BUFFER_INITIAL 1
-#endif
-
-#ifndef BUFFER_BUFFER_MAX
-/* maximum number of chunks - default 1024 (1MiB) */
-#define BUFFER_BUFFER_MAX 1024
-#endif
-
-/******************************************************************************
- * BUFFER FUNCTIONS                                                           *
- ******************************************************************************/
-
+/**
+ * initialize internal buffer based on structure's size parameter
+ */
 int buffer_buf_init(buf_t *buffer)
 {
 	void *tmp;
-	size_t size = (buffer->nmemb * buffer->size);
 
-	tmp = realloc(buffer->ptr, size + 1);
+	tmp = realloc(buffer->ptr, buffer->size + 1);
 
-	if ((tmp == NULL) && (size != 0)) {
+	if ((tmp == NULL) && (buffer->size != 0)) {
 		errno = ENOMEM;
 		return -1;
 	}
 
 	buffer->ptr = tmp;
 
-	((char *)(buffer->ptr))[size] = 0; /* null-terminate */
+	*((char *)(buffer->ptr + buffer->size - 1)) = 0; /* null-terminate */
 
 	return 0;
 }
 
+/**
+ * initialize buf_t compile-time defaults
+ */
 int buffer_buf_init_defaults(buf_t *buffer)
 {
-	buffer->size = BUFFER_BUFFER_SIZE;
-	buffer->nmemb = BUFFER_BUFFER_INITIAL * BUFFER_BUFFER_CHUNK;
-	buffer->nmemb_e = BUFFER_BUFFER_CHUNK;
-	buffer->nmemb_m = BUFFER_BUFFER_MAX;
-
-	buffer->stream = NULL;
+	buffer->size = BUFFER_DEFAULT_SIZE;
+	buffer->size_e = BUFFER_DEFAULT_EXPAND;
 
 	return buffer_buf_init(buffer);
 }
 
+/**
+ * free internal buffer
+ */
 void buffer_buf_free(buf_t *buffer)
 {
 	free(buffer->ptr);
-	buffer->nmemb = 0;
+	buffer->ptr = NULL;
+	buffer->size = 0;
 }
 
-int buffer_rbuf_stream_open(buf_t *buffer, const char *pathname)
+/**
+ * close a previously opened file
+ */
+int buffer_buf_close(buf_t *buffer)
 {
-	if ((buffer->stream = fopen(pathname, "rb")) == NULL)
+#if defined(OS_LINUX)
+	return close(buffer->filedes);
+#else
+	errno = ENOSYS;
+	return -1;
+#endif
+}
+
+/**
+ * set the position of the frame within the current file. doesn't refresh buffer.
+ */
+int buffer_buf_frame_seek(buf_t *buffer, off_t offset, int whence)
+{
+	off_t new_pos;
+
+#if defined(OS_LINUX)
+	if ((new_pos = lseek(buffer->filedes, offset, whence)) == -1)
 		return -1;
+#else
+	errno = ENOSYS;
+	return -1;
+#endif
+
+	buffer->actual_pos = buffer->pos = new_pos;
+
+	return 0;
+}
+
+/**
+ * a more intuitive way of seeking to the start of the file
+ */
+int buffer_buf_frame_rewind(buf_t *buffer)
+{
+	return buffer_buf_frame_seek(buffer, 0, SEEK_SET);
+}
+
+/**
+ * open a file readonly (for rbuf functions)
+ */
+int buffer_rbuf_open(buf_t *buffer, const char *path)
+{
+#if defined(OS_LINUX)
+	struct stat buf;
+
+	if ((buffer->filedes = open(path, O_RDONLY)) == -1)
+		return -1;
+
+	if (stat(path, &buf))
+		return -1;
+
+	buffer->st_size = buf.st_size;
+#else
+	errno = ENOSYS;
+	return -1;
+#endif
 
 	return buffer_rbuf_frame_rewind(buffer);
 }
 
-int buffer_rbuf_stream_close(buf_t *buffer)
+/**
+ * load the current frame at the real file offset (modifies file offset, no seek)
+ * Acts like a pager
+ */
+int buffer_rbuf_frame_load(buf_t *buffer)
 {
-	return fclose(buffer->stream);
-}
+	ssize_t bytes_read;
 
-int buffer_rbuf_frame_readnext(buf_t *buffer)
-{
-	if (fread(buffer->ptr, buffer->size, buffer->nmemb, buffer->stream) !=
-	    buffer->nmemb) {
-		if (ferror(buffer->stream)) {
-			errno = EIO;
-			return -1;
-		}
+	buffer->pos = buffer->actual_pos;
+
+#if defined(OS_LINUX)
+	if ((bytes_read = read(buffer->filedes, buffer->ptr, buffer->size)) ==
+	    -1)
+		return -1;
+#else
+	errno = ENOSYS;
+	return -1;
+#endif
+	if (bytes_read < buffer->size) {
+		*((char *)(buffer->ptr + bytes_read)) = 0;
+		// maybe set an EOF flag?
 	}
+
+	buffer->actual_pos = buffer->pos + bytes_read;
 
 	return 0;
 }
 
-int buffer_rbuf_frame_page(buf_t *buffer)
+/**
+ * seeks and refreshes the current frame
+ */
+int buffer_rbuf_frame_seek(buf_t *buffer, off_t offset, int whence)
 {
-	if (fgetpos(buffer->stream, &(buffer->pos)))
+	if (buffer_buf_frame_seek(buffer, offset, whence))
 		return -1;
 
-	return buffer_rbuf_frame_readnext(buffer);
+	return buffer_rbuf_frame_load(buffer);
 }
 
-int buffer_rbuf_frame_seek(buf_t *buffer, long offset, int whence)
-{
-	if (fsetpos(buffer->stream, &(buffer->pos)))
-		return -1;
-
-	if (fseek(buffer->stream, offset, whence))
-		return -1;
-
-	return buffer_rbuf_frame_readnext(buffer);
-}
-
-int buffer_rbuf_frame_reload(buf_t *buffer)
-{
-	if (fsetpos(buffer->stream, &(buffer->pos)))
-		return -1;
-
-	return buffer_rbuf_frame_readnext(buffer);
-}
-
+/**
+ * rewinds and refreshes the current frame
+ */
 int buffer_rbuf_frame_rewind(buf_t *buffer)
 {
-	rewind(buffer->stream);
-
-	if (fgetpos(buffer->stream, &(buffer->pos)))
+	if (buffer_buf_frame_rewind(buffer))
 		return -1;
 
-	return buffer_rbuf_frame_reload(buffer);
+	return buffer_rbuf_frame_load(buffer);
 }
 
+/**
+ * reload the current frame at the current position (doesn't modify file offset)
+ */
+int buffer_rbuf_frame_reload(buf_t *buffer)
+{
+#if defined(OS_LINUX)
+	if (pread(buffer->filedes, buffer->ptr, buffer->size, buffer->pos))
+		return -1;
+#else
+	errno = ENOSYS;
+	return -1;
+#endif
+	return 0;
+}
+
+/**
+ * expand the current frame by the expansion value in the struct
+ */
 int buffer_rbuf_frame_expand(buf_t *buffer)
 {
-	int ret = 0;
-	size_t new_nmemb;
+	size_t new_size;
 
-	new_nmemb = buffer->nmemb + buffer->nmemb_e;
+	new_size = buffer->size + buffer->size_e;
 
 	/* only allowed to increase in size */
-	if (new_nmemb < buffer->nmemb) {
+	if (new_size < buffer->size) {
 		errno = EOVERFLOW;
 		return -1;
 	}
 
-	if (new_nmemb > buffer->nmemb_m) {
-		errno = ERANGE;
+	buffer->size = new_size;
+
+	if (buffer_buf_init(buffer))
 		return -1;
-	}
 
-	buffer->nmemb = new_nmemb;
-
-	if ((ret = buffer_buf_init(buffer)))
-		return ret;
-
-	if ((ret = buffer_rbuf_frame_reload(buffer)))
-		return ret;
+	if (buffer_rbuf_frame_reload(buffer))
+		return -1;
 
 	return 0;
 }
 
+/**
+ * contracts the current frame by the expansion value in the struct
+ */
 int buffer_rbuf_frame_contract(buf_t *buffer)
 {
-	int ret = 0;
+	size_t new_size;
 
-	size_t new_nmemb;
-
-	new_nmemb = buffer->nmemb - buffer->nmemb_e;
+	new_size = buffer->size + buffer->size_e;
 
 	/* only allowed to decrease in size */
-	if (new_nmemb > buffer->nmemb) {
+	if (new_size > buffer->size) {
 		errno = EOVERFLOW;
 		return -1;
 	}
 
-	buffer->nmemb = new_nmemb;
+	buffer->size = new_size;
 
-	if ((ret = buffer_buf_init(buffer))) /* initialize pointers */
-		return ret;
+	if (buffer_buf_init(buffer))
+		return -1;
 
-	if ((ret = buffer_rbuf_frame_reload(buffer))) /* reload from stream */
-		return ret;
+	if (buffer_rbuf_frame_reload(buffer))
+		return -1;
+
+	return 0;
+}
+
+/**
+ * resets the position and size of the frame
+ */
+int buffer_rbuf_frame_reset(buf_t *buffer)
+{
+	if (buffer_buf_init_defaults(buffer))
+		return -1;
+
+	if (buffer_rbuf_frame_load(buffer))
+		return -1;
 
 	return 0;
 }

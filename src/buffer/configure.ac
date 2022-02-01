@@ -1,19 +1,20 @@
 AC_PREREQ([2.71])
-AC_INIT([buffer], [0.3], [bugs@kara-online.net])
+AC_INIT([buffer], [0.5], [bugs@kara-online.net])
 
 #host switch
 AC_CANONICAL_HOST
 AS_CASE(["$host_os"],
   [*linux*], [
-    OS_VERSION=linux:w
+    OS_VERSION=linux
 
-    AC_DEFINE([OS_LINUX], [],
-      [Defined if the target OS is Linux])
+    AC_DEFINE([OS_LINUX], [], [Defined if the target OS is Linux])
+
+    AC_CHECK_HEADERS([fcntl.h])
+    AC_CHECK_HEADERS([unistd.h])
   ],
   [*mingw*|*cygwin*], [
     OS_VERSION=windows
-    AC_DEFINE([OS_WINDOWS], [],
-      [Defined if the target OS is Windows])
+    AC_DEFINE([OS_WINDOWS], [], [Defined if the target OS is Windows])
   ],
   [AC_MSG_WARN([unsupported system: $host_os])]
 )
@@ -38,6 +39,8 @@ AC_PROG_RANLIB
 
 #types
 AC_TYPE_SIZE_T
+AC_TYPE_OFF_T # this might be linux only
+AC_TYPE_SSIZE_T # this might be linux only
 
 #functions
 AC_FUNC_REALLOC
