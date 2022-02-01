@@ -82,11 +82,6 @@ int advance_to_str(buf_t *buffer, const char *substr)
 	const void *sp;
 	size_t size = strlen(substr);
 
-#ifdef DEBUG
-	printf("DEBUG: Searching for \"%s\"\n", substr);
-	fflush(stdout);
-#endif
-
 	while ((sp = memmem(buffer->ptr, substr, size, buffer->size)) == NULL) {
 		/* advance as much as we can */
 		if (buffer_rbuf_frame_seek(buffer, buffer->size - size,
@@ -96,19 +91,9 @@ int advance_to_str(buf_t *buffer, const char *substr)
 		}
 
 		/* went past EOF, so it's not in the current file. */
-		if (buffer->actual_pos > buffer->st_size) {
-			fprintf(stderr, "error: EOF reached\n");
-			fflush(stderr);
-			errno = ENOTRECOVERABLE;
-			return -1;
-		}
+		if (buffer_buf_eof(buffer))
+			return EOF;
 	}
-
-#ifdef DEBUG
-	printf("DEBUG: found \"%s\" at position %ld\n", substr,
-	       buffer->pos + (sp - buffer->ptr));
-	fflush(stdout);
-#endif
 
 	/* found what we were looking for. advance up to it */
 	if (buffer_rbuf_frame_seek(buffer, sp - buffer->ptr, SEEK_CUR)) {
@@ -126,38 +111,22 @@ struct match {
 
 int get_stream(buf_t *buffer, struct match *pmatch)
 {
+	int ret;
+
 	/* Search for FlateDecode */
-	if (advance_to_str(buffer, "FlateDecode")) {
-		/* didn't find "FlateDecode" */
-		fputs("error: The file doesn't contain a FlateDecode stream\n",
-		      stderr);
-		fflush(stderr);
-		errno = ENOTRECOVERABLE;
-		return -1;
-	}
+	if ((ret = advance_to_str(buffer, "FlateDecode")))
+		return ret;
 
 	/* Search for stream start */
-	if (advance_to_str(buffer, "stream")) {
-		/* didn't find "FlateDecode" */
-		fputs("error: The file doesn't contain a valid FlateDecode stream\n",
-		      stderr);
-		fflush(stderr);
-		errno = ENOTRECOVERABLE;
-		return -1;
-	}
+	if ((ret = advance_to_str(buffer, "stream")))
+		return ret;
 
 	/* currently at \"stream\". I want to get to the start of the data.*/
 	pmatch->start = buffer->pos + 6;
 
 	/* Search for stream end */
-	if (advance_to_str(buffer, "endstream")) {
-		/* didn't find "FlateDecode" */
-		fputs("error: The file doesn't contain a valid FlateDecode stream\n",
-		      stderr);
-		fflush(stderr);
-		errno = ENOTRECOVERABLE;
-		return -1;
-	}
+	if ((ret = advance_to_str(buffer, "endstream")))
+		return ret;
 
 	pmatch->end = buffer->pos;
 
@@ -166,12 +135,6 @@ int get_stream(buf_t *buffer, struct match *pmatch)
 		fputs("error: buffer_rbuf_frame_seek: ", stderr);
 		return -1;
 	}
-
-#ifdef DEBUG
-	printf("DEBUG: found stream starting at position %ld with size %ld\n",
-	       pmatch->start, pmatch->end - pmatch->start);
-	fflush(stdout);
-#endif
 
 	return 0;
 }
@@ -195,8 +158,8 @@ int uncompress_and_save()
 
 int main(int argc, char **argv)
 {
-	int ret = 0;
-	int i;
+	int ret = 0, error = 0;
+	int i, stream;
 	const char *filename;
 
 	struct match pmatch;
@@ -217,7 +180,7 @@ int main(int argc, char **argv)
 	if (buffer_buf_init_defaults(&buffer)) {
 		fputs("Initialization failure.\n", stderr);
 		fflush(stderr);
-		exit(1);
+		return 1;
 	}
 
 	/* Every parameter specifies a file name */
@@ -235,14 +198,9 @@ int main(int argc, char **argv)
 			fputs(strerror(errno), stderr);
 			fputc('\n', stderr);
 			fflush(stderr);
-			ret++;
+			error++;
 			continue;
 		}
-
-		//if (!(fp = fopen(filename, "rb"))) {
-		//	fputs(strerror(errno), stderr);
-		//	continue;
-		//}
 
 #ifdef DEBUG
 		printf("DEBUG: Checking %s for PDF signature\n", filename);
@@ -257,21 +215,30 @@ int main(int argc, char **argv)
 			fputs("The file doesn't contain a valid PDF signature.\n",
 			      stderr);
 			fflush(stderr);
-			ret++;
+			error++;
 			goto no_go;
 		}
 
-		if (get_stream(&buffer, &pmatch)) {
-			fprintf(stderr,
-				"When scanning scanning %s: ", filename);
-			fputs(strerror(errno), stderr);
-			fputc('\n', stderr);
-			fflush(stderr);
-			ret++;
-			goto no_go;
+		// TODO: Do this until there are no more streams.
+		stream = 0;
+		errno = 0;
+		while ((ret = get_stream(&buffer, &pmatch)) != EOF) {
+			if (ret) {
+				fprintf(stderr, "When scanning scanning %s: ",
+					filename);
+				fputs(strerror(errno), stderr);
+				fputc('\n', stderr);
+				fflush(stderr);
+				error++;
+				goto no_go;
+			}
+#ifdef DEBUG
+			printf("DEBUG: found stream #%d starting at position %ld with size %ld\n",
+			       stream, pmatch.start, pmatch.end - pmatch.start);
+			fflush(stdout);
+#endif
+			stream++;
 		}
-
-		/* the match should be in pmatch */
 
 		// TODO: this thing
 		//uncompress_and_save();
@@ -289,5 +256,5 @@ int main(int argc, char **argv)
 	fflush(stdout);
 #endif
 	buffer_buf_free(&buffer);
-	return ret;
+	return error;
 }
