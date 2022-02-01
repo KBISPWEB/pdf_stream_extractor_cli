@@ -24,9 +24,6 @@
 #include <filext.h> /* my file extension library */
 #include <buffer.h> /* my buffer library */
 
-/* this is only for buffering with zlib */
-#define BUFFER_LEN 128
-
 filext_table_t filext_records = FILEXT_TABLE(FILEXT_RECORD(
 	FILEXT_SIGNATURE(0x30, 0x26, 0xb2, 0x75, 0x8e, 0x66, 0xcf),
 	FILEXT_OFFSETS(0), "wmv"));
@@ -38,11 +35,7 @@ char *get_file_filext(uint8_t *data, size_t size)
 
 	ext = filext_get_filext(&sample);
 
-	if (ext != NULL) {
-		return ext;
-	}
-
-	return "unknown";
+	return ext;
 }
 
 int is_pdf(buf_t *buffer)
@@ -152,28 +145,43 @@ int get_stream(buf_t *buffer)
 	return 0;
 }
 
-int uncompress_and_save(const char *buffer, const size_t size, const char *path)
+int uncompress_and_save(const char *bufp, const size_t size, const char *path)
 {
-	char buffer_in[BUFFER_LEN];
-	char buffer_out[BUFFER_LEN];
-
 	z_stream infstream = { 0 }; /* zero-init so pointers are null */
 
-	infstream.next_in = (Bytef *)buffer_in; /* input char buffer */
-	infstream.avail_in = (uInt)BUFFER_LEN; /* size of input buffer */
-	infstream.next_out = (Bytef *)buffer_out; /* output char array */
-	infstream.avail_out = (uInt)BUFFER_LEN; /* size of output */
+	wbuf_t buffer_out;
+
+	buffer_buf_construct((but_t *)&buffer_out);
+	buffer_buf_init_defaults((buf_t *)&buffer_out);
+
+	buffer_wbuf_open(&buffer_out, path);
+
+	infstream.next_in = (Bytef *)bufp; /* input char buffer */
+	infstream.avail_in = (uInt)size; /* size of input buffer */
+	infstream.next_out = (Bytef *)(buffer_out.ptr); /* output char array */
+	infstream.avail_out = (uInt)(buffer_out.size); /* size of output */
 
 #ifdef DEBUG
 	printf("DEBUG: uncompressing stream data\n", path);
 	fflush(stdout);
 #endif
 
+	inflateInit(&infstream);
 	// TODO: uncompress raw data using zlib
+	while (inflate(&infstream, Z_NO_FLUSH) != Z_STREAM_END) {
+		// TODO: save uncompressed data
+	}
+
+	inflateEnd(&infstream);
+
 	// TODO: determine filetype from uncompressed data
-	// TODO: save uncompressed data with file filext matching filetype
-	printf("saving ./%s \n", path);
+
+	// TODO: rename uncompressed data if path changed.
+
+	printf("saved ./%s \n", path);
 	fflush(stdout);
+
+	buffer_buf_free((buf_t *)&buffer_out);
 }
 
 int main(int argc, char **argv)
@@ -184,7 +192,7 @@ int main(int argc, char **argv)
 	const char *filename;
 	char dataname[NAME_MAX];
 
-	buf_t buffer;
+	rbuf_t buffer;
 	size_t orig_size;
 
 	if (argc <= 1) {
@@ -193,15 +201,15 @@ int main(int argc, char **argv)
 		return 1;
 	}
 
-	buffer_buf_construct(&buffer);
-
 #ifdef DEBUG
 	printf("DEBUG: Initializing buffer defaults\n");
 	fflush(stdout);
 #endif
 
+	buffer_buf_construct((buf_t *)&buffer);
+
 	/* build buffer */
-	if (buffer_buf_init_defaults(&buffer)) {
+	if (buffer_buf_init_defaults((buf_t *)&buffer)) {
 		fputs("Initialization failure: buffer_buf_init_defaults: ",
 		      stderr);
 		fputs(strerror(errno), stderr);
@@ -283,13 +291,13 @@ int main(int argc, char **argv)
 		fflush(stdout);
 #endif
 
-		buffer_buf_close(&buffer);
+		buffer_buf_close((buf_t *)&buffer);
 	}
 
 #ifdef DEBUG
 	printf("DEBUG: Cleanup.\n");
 	fflush(stdout);
 #endif
-	buffer_buf_free(&buffer);
+	buffer_buf_free((buf_t *)&buffer);
 	return error;
 }
