@@ -22,8 +22,6 @@ AS_CASE(["$host_os"],
 )
 AM_CONDITIONAL([HOST_WINDOWS], [test "x$OS_VERSION" = "xwindows"])
 
-AC_DEFINE([DEBUG], [], [enable debugging on psec])
-
 #autoconf stuff
 AM_INIT_AUTOMAKE([foreign -Wall -Werror])
 AC_CONFIG_SUBDIRS([src/filext src/buffer])
@@ -41,18 +39,18 @@ AC_C_RESTRICT
 # none
 
 #headers
-AC_CHECK_HEADER([regex.h], [], [
-  AC_MSG_ERROR([regex.h not found but is required. Make sure it's installed for $host.])
-], [])
+# none
 
 #types
 AC_TYPE_SIZE_T
 AC_TYPE_UINT8_T
+AC_TYPE_OFF_T
 
 #functions
+AC_CHECK_FUNCS([stpcpy])
 AC_CHECK_FUNCS([strerror])
-AC_CHECK_FUNCS([regcomp])
 AC_CHECK_FUNCS([strstr])
+AC_CHECK_FUNCS([memchr])
 
 AC_CONFIG_FILES([
   Makefile
