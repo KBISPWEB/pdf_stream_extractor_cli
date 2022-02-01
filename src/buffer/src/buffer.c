@@ -83,8 +83,23 @@ int buffer_buf_frame_seek(buf_t *buffer, off_t offset, int whence)
 {
 	off_t new_pos;
 
+	switch (whence) {
+	case SEEK_SET:
+		new_pos = offset;
+		break;
+	case SEEK_CUR:
+		new_pos = buffer->pos + offset;
+		break;
+	case SEEK_END:
+		new_pos = buffer->st_size - offset;
+		break;
+	default:
+		errno = EINVAL;
+		return -1;
+	}
+
 #if defined(OS_LINUX)
-	if ((new_pos = lseek(buffer->filedes, offset, whence)) == -1)
+	if ((new_pos = lseek(buffer->filedes, new_pos, SEEK_SET)) == -1)
 		return -1;
 #else
 	errno = ENOSYS;
@@ -182,14 +197,7 @@ int buffer_rbuf_frame_rewind(buf_t *buffer)
  */
 int buffer_rbuf_frame_reload(buf_t *buffer)
 {
-#if defined(OS_LINUX)
-	if (pread(buffer->filedes, buffer->ptr, buffer->size, buffer->pos))
-		return -1;
-#else
-	errno = ENOSYS;
-	return -1;
-#endif
-	return 0;
+	return buffer_rbuf_frame_seek(buffer, buffer->pos, SEEK_SET);
 }
 
 /**
