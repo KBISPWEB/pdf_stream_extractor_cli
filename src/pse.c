@@ -9,10 +9,20 @@
 #include <zlib.h>
 
 #ifdef OS_WINDOWS
+/* no debugging in windows target right now, sorry! */
+#ifdef DEBUG
+#undef DEBUG
+#endif
 #include <fileapi.h>
 #endif
 
 #ifdef OS_LINUX
+#include <unistd.h>
+#endif
+
+#ifdef DEBUG
+#include <sys/types.h>
+#include <sys/stat.h>
 #include <unistd.h>
 #endif
 
@@ -40,18 +50,18 @@ char *get_file_filext(uint8_t *data, size_t size)
 	return "unknown";
 }
 
-int is_pdf(FILE *fp)
+int is_pdf(buf_t *buffer)
 {
-	char signature[6];
-
 	/* check file signature */
-	if (fread(signature, sizeof(char), 6, fp) < 6)
-		return 1;
+#ifdef DEBUG
+	printf("DEBUG: File signature looks like: \"%.8s\"\n", buffer->ptr);
+	fflush(stdout);
+#endif
 
-	if (strncmp("%PDF-", signature, 5))
-		return 1;
+	if (strncmp("%PDF-", buffer->ptr, 5))
+		return 0;
 
-	return 0;
+	return 1;
 }
 
 int scan_buffer(buf_t *buffer, regex_t *restrict preg,
@@ -59,7 +69,7 @@ int scan_buffer(buf_t *buffer, regex_t *restrict preg,
 {
 	int ret = 0;
 
-	size_t orig_nmemb = buffer->nmemb;
+	size_t orig_size = buffer->size;
 
 	/* resize data frame until we find a match or run out of space */
 
@@ -71,7 +81,7 @@ int scan_buffer(buf_t *buffer, regex_t *restrict preg,
 	}
 
 	/* matched, reset buffer size and put location directly after our match */
-	buffer->nmemb = orig_nmemb;
+	buffer->size = orig_size;
 
 	if ((ret = buffer_buf_init(buffer)))
 		goto die;
@@ -102,6 +112,7 @@ int uncompress_and_save()
 
 int main(int argc, char **argv)
 {
+	int ret = 0;
 	int i;
 	const char *filename;
 	char *sp;
@@ -109,7 +120,7 @@ int main(int argc, char **argv)
 	regex_t preg;
 	regmatch_t pmatch[NMATCH]; /* nmatch is hard-coded */
 
-	buf_t buffer;
+	buf_t buffer = { 0 }; /* IMPORTANT */
 
 	if (argc <= 1) {
 		fputs("You must specify a PDF file from which to extract stream data.\n",
@@ -122,32 +133,88 @@ int main(int argc, char **argv)
 		    REG_EXTENDED | REG_NEWLINE))
 		exit(1);
 
+#ifdef DEBUG
+	printf("DEBUG: Initializing buffer defaults\n");
+	fflush(stdout);
+#endif
+
+	/* build buffer */
+	if (buffer_buf_init_defaults(&buffer)) {
+		fputs("Initialization failure.\n", stderr);
+		fflush(stderr);
+		exit(1);
+	}
+
 	/* Every parameter specifies a file name */
 	for (i = 1; i < argc; i++) {
 		filename = argv[i];
 
-		/* build buffer */
-		buffer_buf_init_defaults(&buffer);
-		buffer_rbuf_stream_open(&buffer, filename);
+#ifdef DEBUG
+		printf("DEBUG: Opening %s\n", filename);
+		fflush(stdout);
+#endif
+
+		if (buffer_rbuf_open(&buffer, filename)) {
+			fprintf(stderr, "error opening %s: ", filename);
+			fputs("buffer_rbuf_open: ", stderr);
+			fputs(strerror(errno), stderr);
+			fputc('\n', stderr);
+			fflush(stderr);
+			ret++;
+			continue;
+		}
 
 		//if (!(fp = fopen(filename, "rb"))) {
 		//	fputs(strerror(errno), stderr);
 		//	continue;
 		//}
 
-		if (!is_pdf(buffer.stream)) {
-			fprintf(stderr, "%s doesn't look like a PDF file.",
-				filename);
-			continue;
+#ifdef DEBUG
+		printf("DEBUG: Checking %s for PDF signature\n", filename);
+		fflush(stdout);
+#endif
+
+		if (!is_pdf(&buffer)) {
+			fprintf(stderr, "error parsing %s: ", filename);
+			fputs("the file doesn't contain a valid PDF signature.\n",
+			      stderr);
+			fflush(stderr);
+			ret++;
+			goto no_go;
 		}
+
+#ifdef DEBUG
+		printf("DEBUG: Searching %s for \"FlateDecode\"\n", filename);
+		fflush(stdout);
+#endif
 
 		while ((sp = strstr((char *)(buffer.ptr), "FlateDecode")) ==
 		       NULL) {
-			/* didn't find "FlateDecode" */
+			/* didn't find "FlateDecode here" */
+
 			/* advance as much as we can */
-			buffer_rbuf_frame_seek(
-				&buffer, buffer.nmemb - sizeof("FlateDecode"),
-				SEEK_CUR);
+			if (buffer_rbuf_frame_seek(
+				    &buffer,
+				    buffer.size - sizeof("FlateDecode"),
+				    SEEK_CUR)) {
+				fprintf(stderr, "error parsing %s: ", filename);
+				fputs("buffer_rbuf_frame_seek: ", stderr);
+				fputs(strerror(errno), stderr);
+				fputc('\n', stderr);
+				fflush(stderr);
+				ret++;
+				goto no_go;
+			}
+
+			/* went past EOF, so it's not in the current file. */
+			if (buffer.actual_pos > buffer.st_size) {
+				fprintf(stderr, "error parsing %s: ", filename);
+				fputs("the file doesn't contain any FlateDecode stream\n",
+				      stderr);
+				fflush(stderr);
+				ret++;
+				goto no_go;
+			}
 		}
 
 		/* found "FlateDecode", starting at sp */
@@ -158,10 +225,23 @@ int main(int argc, char **argv)
 
 		scan_buffer(&buffer, &preg, pmatch);
 
+		/* the match should be in pmatch[1] */
+		// print for debugging
+		*((char *)(buffer.ptr + pmatch[1].rm_eo + 1)) = 0;
+		puts((char *)(buffer.ptr + pmatch[1].rm_so));
+
 		// TODO: this thing
 		//uncompress_and_save();
+	no_go:
+#ifdef DEBUG
+		printf("DEBUG: Closing %s\n", filename);
+		fflush(stdout);
+#endif
+
+		buffer_buf_close(&buffer);
 	}
 
+	buffer_buf_free(&buffer);
 	regfree(&preg);
-	return 0;
+	return ret;
 }

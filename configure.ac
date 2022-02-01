@@ -1,5 +1,5 @@
 AC_PREREQ([2.71])
-AC_INIT([psec], [0.3], [bugs@kara-online.net])
+AC_INIT([psec], [0.4], [bugs@kara-online.net])
 
 #host switch
 AC_CANONICAL_HOST
@@ -21,6 +21,8 @@ AS_CASE(["$host_os"],
   [AC_MSG_WARN([unsupported system: $host_os])]
 )
 AM_CONDITIONAL([HOST_WINDOWS], [test "x$OS_VERSION" = "xwindows"])
+
+AC_DEFINE([DEBUG], [], [enable debugging on psec])
 
 #autoconf stuff
 AM_INIT_AUTOMAKE([foreign -Wall -Werror])
