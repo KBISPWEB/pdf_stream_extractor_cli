@@ -18,6 +18,12 @@ typedef struct buffer {
 } buf_t;
 
 /**
+ * construct a new buffer structure to be "nothing"
+ * @param buffer  [description]
+ */
+void buffer_buf_construct(buf_t *buffer);
+
+/**
  * initialize internal buffer based on structure's size parameter
  * @param  buffer               [description]
  * @return        0 on success, -1 on failure (see errno)

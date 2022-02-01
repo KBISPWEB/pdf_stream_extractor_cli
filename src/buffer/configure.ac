@@ -44,6 +44,7 @@ AC_TYPE_SSIZE_T # this might be linux only
 
 #functions
 AC_FUNC_REALLOC
+AC_CHECK_FUNCS([memset])
 
 AC_CONFIG_FILES([
   Makefile

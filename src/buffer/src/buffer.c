@@ -2,6 +2,7 @@
 
 #include <errno.h>
 #include <stdlib.h>
+#include <string.h>
 
 #ifdef OS_LINUX
 #include <sys/stat.h>
@@ -21,6 +22,17 @@
 #define BUFFER_DEFAULT_EXPAND 1023
 #endif
 
+void buffer_buf_construct(buf_t *buffer)
+{
+	buffer->ptr = NULL;
+	buffer->size = 0;
+	buffer->size_e = 0;
+	buffer->filedes = -1;
+	buffer->st_size = 0;
+	buffer->actual_pos = 0;
+	buffer->pos = 0;
+}
+
 /**
  * initialize internal buffer based on structure's size parameter
  */
@@ -37,7 +49,8 @@ int buffer_buf_init(buf_t *buffer)
 
 	buffer->ptr = tmp;
 
-	*((char *)(buffer->ptr + buffer->size - 1)) = 0; /* null-terminate */
+	/* 0-initialize the whole thing */
+	memset(buffer->ptr, 0, buffer->size + 1);
 
 	return 0;
 }
@@ -265,7 +278,7 @@ int buffer_rbuf_frame_reset(buf_t *buffer)
 	if (buffer_buf_init_defaults(buffer))
 		return -1;
 
-	if (buffer_rbuf_frame_load(buffer))
+	if (buffer_rbuf_frame_reload(buffer))
 		return -1;
 
 	return 0;
