@@ -4,7 +4,6 @@
 #include <stdlib.h>
 
 #include <errno.h>
-#include <regex.h>
 #include <string.h>
 #include <zlib.h>
 
@@ -53,44 +52,128 @@ char *get_file_filext(uint8_t *data, size_t size)
 int is_pdf(buf_t *buffer)
 {
 	/* check file signature */
-#ifdef DEBUG
-	printf("DEBUG: File signature looks like: \"%.8s\"\n", buffer->ptr);
-	fflush(stdout);
-#endif
-
 	if (strncmp("%PDF-", buffer->ptr, 5))
 		return 0;
 
 	return 1;
 }
 
-int scan_buffer(buf_t *buffer, regex_t *restrict preg,
-		regmatch_t pmatch[restrict])
+const void *memmem(const void *s1, const void *s2, size_t n, const size_t size)
 {
-	int ret = 0;
+	size_t offset = 0;
+	void *sp;
 
-	size_t orig_size = buffer->size;
-
-	/* resize data frame until we find a match or run out of space */
-
-	/* search our current frame for a regex match */
-	while (regexec(preg, (char *)(buffer->ptr), NMATCH, pmatch, 0)) {
-		/* REG_NOMATCH, increase buffer size. */
-		if ((ret = buffer_rbuf_frame_expand(buffer)))
-			goto die;
+	while (memcmp(s1 + offset, s2, n) != 0) {
+		if ((sp = memchr(s1 + offset + 1, *((char *)s2), n - 1)) !=
+		    NULL) {
+			offset = sp - s1;
+		} else {
+			offset += n;
+		}
+		if ((offset + n) > size)
+			return NULL;
 	}
 
-	/* matched, reset buffer size and put location directly after our match */
-	buffer->size = orig_size;
+	return s1 + offset;
+}
 
-	if ((ret = buffer_buf_init(buffer)))
-		goto die;
+int advance_to_str(buf_t *buffer, const char *substr)
+{
+	const void *sp;
+	size_t size = strlen(substr);
 
-	if ((ret = buffer_rbuf_frame_seek(buffer, pmatch[0].rm_eo, SEEK_CUR)))
-		goto die;
+#ifdef DEBUG
+	printf("DEBUG: Searching for \"%s\"\n", substr);
+	fflush(stdout);
+#endif
 
-die:
-	return ret;
+	while ((sp = memmem(buffer->ptr, substr, size, buffer->size)) == NULL) {
+		/* advance as much as we can */
+		if (buffer_rbuf_frame_seek(buffer, buffer->size - size,
+					   SEEK_CUR)) {
+			fputs("error: buffer_rbuf_frame_seek: ", stderr);
+			return -1;
+		}
+
+		/* went past EOF, so it's not in the current file. */
+		if (buffer->actual_pos > buffer->st_size) {
+			fprintf(stderr, "error: EOF reached\n");
+			fflush(stderr);
+			errno = ENOTRECOVERABLE;
+			return -1;
+		}
+	}
+
+#ifdef DEBUG
+	printf("DEBUG: found \"%s\" at position %ld\n", substr,
+	       buffer->pos + (sp - buffer->ptr));
+	fflush(stdout);
+#endif
+
+	/* found what we were looking for. advance up to it */
+	if (buffer_rbuf_frame_seek(buffer, sp - buffer->ptr, SEEK_CUR)) {
+		fputs("error: buffer_rbuf_frame_seek: ", stderr);
+		return -1;
+	}
+
+	return 0;
+}
+
+struct match {
+	off_t start;
+	off_t end;
+};
+
+int get_stream(buf_t *buffer, struct match *pmatch)
+{
+	/* Search for FlateDecode */
+	if (advance_to_str(buffer, "FlateDecode")) {
+		/* didn't find "FlateDecode" */
+		fputs("error: The file doesn't contain a FlateDecode stream\n",
+		      stderr);
+		fflush(stderr);
+		errno = ENOTRECOVERABLE;
+		return -1;
+	}
+
+	/* Search for stream start */
+	if (advance_to_str(buffer, "stream")) {
+		/* didn't find "FlateDecode" */
+		fputs("error: The file doesn't contain a valid FlateDecode stream\n",
+		      stderr);
+		fflush(stderr);
+		errno = ENOTRECOVERABLE;
+		return -1;
+	}
+
+	/* currently at \"stream\". I want to get to the start of the data.*/
+	pmatch->start = buffer->pos + 6;
+
+	/* Search for stream end */
+	if (advance_to_str(buffer, "endstream")) {
+		/* didn't find "FlateDecode" */
+		fputs("error: The file doesn't contain a valid FlateDecode stream\n",
+		      stderr);
+		fflush(stderr);
+		errno = ENOTRECOVERABLE;
+		return -1;
+	}
+
+	pmatch->end = buffer->pos;
+
+	/* seek past stream end */
+	if (buffer_rbuf_frame_seek(buffer, 9, SEEK_CUR)) {
+		fputs("error: buffer_rbuf_frame_seek: ", stderr);
+		return -1;
+	}
+
+#ifdef DEBUG
+	printf("DEBUG: found stream starting at position %ld with size %ld\n",
+	       pmatch->start, pmatch->end - pmatch->start);
+	fflush(stdout);
+#endif
+
+	return 0;
 }
 
 int uncompress_and_save()
@@ -115,11 +198,8 @@ int main(int argc, char **argv)
 	int ret = 0;
 	int i;
 	const char *filename;
-	char *sp;
 
-	regex_t preg;
-	regmatch_t pmatch[NMATCH]; /* nmatch is hard-coded */
-
+	struct match pmatch;
 	buf_t buffer = { 0 }; /* IMPORTANT */
 
 	if (argc <= 1) {
@@ -127,11 +207,6 @@ int main(int argc, char **argv)
 		      stderr);
 		return 1;
 	}
-
-	/* build regex */
-	if (regcomp(&preg, "FlateDecode.*?stream(.*?)endstream",
-		    REG_EXTENDED | REG_NEWLINE))
-		exit(1);
 
 #ifdef DEBUG
 	printf("DEBUG: Initializing buffer defaults\n");
@@ -171,64 +246,32 @@ int main(int argc, char **argv)
 
 #ifdef DEBUG
 		printf("DEBUG: Checking %s for PDF signature\n", filename);
+		printf("DEBUG: File signature looks like: \"%.8s\"\n",
+		       buffer.ptr);
 		fflush(stdout);
 #endif
 
 		if (!is_pdf(&buffer)) {
-			fprintf(stderr, "error parsing %s: ", filename);
-			fputs("the file doesn't contain a valid PDF signature.\n",
+			fprintf(stderr,
+				"error: When validating %s: ", filename);
+			fputs("The file doesn't contain a valid PDF signature.\n",
 			      stderr);
 			fflush(stderr);
 			ret++;
 			goto no_go;
 		}
 
-#ifdef DEBUG
-		printf("DEBUG: Searching %s for \"FlateDecode\"\n", filename);
-		fflush(stdout);
-#endif
-
-		while ((sp = strstr((char *)(buffer.ptr), "FlateDecode")) ==
-		       NULL) {
-			/* didn't find "FlateDecode here" */
-
-			/* advance as much as we can */
-			if (buffer_rbuf_frame_seek(
-				    &buffer,
-				    buffer.size - sizeof("FlateDecode"),
-				    SEEK_CUR)) {
-				fprintf(stderr, "error parsing %s: ", filename);
-				fputs("buffer_rbuf_frame_seek: ", stderr);
-				fputs(strerror(errno), stderr);
-				fputc('\n', stderr);
-				fflush(stderr);
-				ret++;
-				goto no_go;
-			}
-
-			/* went past EOF, so it's not in the current file. */
-			if (buffer.actual_pos > buffer.st_size) {
-				fprintf(stderr, "error parsing %s: ", filename);
-				fputs("the file doesn't contain any FlateDecode stream\n",
-				      stderr);
-				fflush(stderr);
-				ret++;
-				goto no_go;
-			}
+		if (get_stream(&buffer, &pmatch)) {
+			fprintf(stderr,
+				"When scanning scanning %s: ", filename);
+			fputs(strerror(errno), stderr);
+			fputc('\n', stderr);
+			fflush(stderr);
+			ret++;
+			goto no_go;
 		}
 
-		/* found "FlateDecode", starting at sp */
-		/* advance up to "FlateDecode" so we have as much in frame as possible */
-		buffer_rbuf_frame_seek(&buffer, (char *)(buffer.ptr) - sp,
-				       SEEK_CUR);
-		sp = buffer.ptr;
-
-		scan_buffer(&buffer, &preg, pmatch);
-
-		/* the match should be in pmatch[1] */
-		// print for debugging
-		*((char *)(buffer.ptr + pmatch[1].rm_eo + 1)) = 0;
-		puts((char *)(buffer.ptr + pmatch[1].rm_so));
+		/* the match should be in pmatch */
 
 		// TODO: this thing
 		//uncompress_and_save();
@@ -241,7 +284,10 @@ int main(int argc, char **argv)
 		buffer_buf_close(&buffer);
 	}
 
+#ifdef DEBUG
+	printf("DEBUG: Cleanup.\n");
+	fflush(stdout);
+#endif
 	buffer_buf_free(&buffer);
-	regfree(&preg);
 	return ret;
 }
