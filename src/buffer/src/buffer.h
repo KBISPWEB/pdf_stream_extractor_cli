@@ -45,6 +45,13 @@ void buffer_buf_free(buf_t *buffer);
 int buffer_buf_close(buf_t *buffer);
 
 /**
+ * test whether buffer has reached (or gone past) the real eof
+ * @param  buffer               [description]
+ * @return        0 if not EOF, 1 if EOF
+ */
+int buffer_buf_eof(buf_t *buffer);
+
+/**
  * set the position of the frame within the current file. doesn't refresh buffer.
  * @param  buffer               [description]
  * @param  offset               [description]

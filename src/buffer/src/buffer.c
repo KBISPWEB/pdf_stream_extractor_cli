@@ -76,6 +76,11 @@ int buffer_buf_close(buf_t *buffer)
 #endif
 }
 
+int buffer_buf_eof(buf_t *buffer)
+{
+	return (buffer->actual_pos > buffer->st_size);
+}
+
 /**
  * set the position of the frame within the current file. doesn't refresh buffer.
  */
