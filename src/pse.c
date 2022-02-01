@@ -1,34 +1,30 @@
-﻿#include <stdio.h>
+﻿#include <stdio.h> /* printing stuff to stdout */
 #include <config.h>
 
 #include <stdlib.h>
 
-#include <errno.h>
-#include <string.h>
-#include <zlib.h>
+#include <libgen.h> /* basename */
+#include <errno.h> /* errno */
+#include <string.h> /* string and memory stuff */
+#include <zlib.h> /* zlib compression and uncompression */
 
 #ifdef OS_WINDOWS
 /* no debugging in windows target right now, sorry! */
 #ifdef DEBUG
 #undef DEBUG
 #endif
-#include <fileapi.h>
+#include <fileapi.h> /* low level file stuff */
 #endif
 
 #ifdef OS_LINUX
-#include <unistd.h>
+#include <limits.h> /* filename limit */
+#include <unistd.h> /* low level file stuff */
 #endif
 
-#ifdef DEBUG
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <unistd.h>
-#endif
+#include <filext.h> /* my file extension library */
+#include <buffer.h> /* my buffer library */
 
-#include <filext.h>
-#include <buffer.h>
-
-#define NMATCH 1
+/* this is only for buffering with zlib */
 #define BUFFER_LEN 128
 
 filext_table_t filext_records = FILEXT_TABLE(FILEXT_RECORD(
@@ -104,14 +100,19 @@ int advance_to_str(buf_t *buffer, const char *substr)
 	return 0;
 }
 
-struct match {
-	off_t start;
-	off_t end;
-};
-
-int get_stream(buf_t *buffer, struct match *pmatch)
+int get_stream(buf_t *buffer)
 {
+	off_t start;
 	int ret;
+
+	/* make sure we have enough space here. */
+	if (buffer_rbuf_frame_reset(buffer)) {
+		fputs("error: buffer_rbuf_frame_reset: ", stderr);
+		fputs(strerror(errno), stderr);
+		fputc('\n', stderr);
+		fflush(stderr);
+		return -1;
+	}
 
 	/* Search for FlateDecode */
 	if ((ret = advance_to_str(buffer, "FlateDecode")))
@@ -122,24 +123,36 @@ int get_stream(buf_t *buffer, struct match *pmatch)
 		return ret;
 
 	/* currently at \"stream\". I want to get to the start of the data.*/
-	pmatch->start = buffer->pos + 6;
+	start = buffer->pos + 6;
 
 	/* Search for stream end */
 	if ((ret = advance_to_str(buffer, "endstream")))
 		return ret;
 
-	pmatch->end = buffer->pos;
+	/* make sure the frame is the correct size */
+	buffer->size = buffer->pos - start;
 
-	/* seek past stream end */
-	if (buffer_rbuf_frame_seek(buffer, 9, SEEK_CUR)) {
+	if (buffer_buf_init(buffer)) {
+		fputs("error: buffer_buf_init: ", stderr);
+		fputs(strerror(errno), stderr);
+		fputc('\n', stderr);
+		fflush(stderr);
+		return -1;
+	}
+
+	/* position buffer over entire stream */
+	if (buffer_rbuf_frame_seek(buffer, start, SEEK_SET)) {
 		fputs("error: buffer_rbuf_frame_seek: ", stderr);
+		fputs(strerror(errno), stderr);
+		fputc('\n', stderr);
+		fflush(stderr);
 		return -1;
 	}
 
 	return 0;
 }
 
-int uncompress_and_save()
+int uncompress_and_save(const char *buffer, const size_t size, const char *path)
 {
 	char buffer_in[BUFFER_LEN];
 	char buffer_out[BUFFER_LEN];
@@ -151,25 +164,36 @@ int uncompress_and_save()
 	infstream.next_out = (Bytef *)buffer_out; /* output char array */
 	infstream.avail_out = (uInt)BUFFER_LEN; /* size of output */
 
+#ifdef DEBUG
+	printf("DEBUG: uncompressing stream data\n", path);
+	fflush(stdout);
+#endif
+
 	// TODO: uncompress raw data using zlib
 	// TODO: determine filetype from uncompressed data
 	// TODO: save uncompressed data with file filext matching filetype
+	printf("saving ./%s \n", path);
+	fflush(stdout);
 }
 
 int main(int argc, char **argv)
 {
 	int ret = 0, error = 0;
 	int i, stream;
-	const char *filename;
 
-	struct match pmatch;
-	buf_t buffer = { 0 }; /* IMPORTANT */
+	const char *filename;
+	char dataname[NAME_MAX];
+
+	buf_t buffer;
+	size_t orig_size;
 
 	if (argc <= 1) {
 		fputs("You must specify a PDF file from which to extract stream data.\n",
 		      stderr);
 		return 1;
 	}
+
+	buffer_buf_construct(&buffer);
 
 #ifdef DEBUG
 	printf("DEBUG: Initializing buffer defaults\n");
@@ -178,7 +202,10 @@ int main(int argc, char **argv)
 
 	/* build buffer */
 	if (buffer_buf_init_defaults(&buffer)) {
-		fputs("Initialization failure.\n", stderr);
+		fputs("Initialization failure: buffer_buf_init_defaults: ",
+		      stderr);
+		fputs(strerror(errno), stderr);
+		fputc('\n', stderr);
 		fflush(stderr);
 		return 1;
 	}
@@ -222,7 +249,7 @@ int main(int argc, char **argv)
 		// TODO: Do this until there are no more streams.
 		stream = 0;
 		errno = 0;
-		while ((ret = get_stream(&buffer, &pmatch)) != EOF) {
+		while ((ret = get_stream(&buffer)) != EOF) {
 			if (ret) {
 				fprintf(stderr, "When scanning scanning %s: ",
 					filename);
@@ -230,18 +257,26 @@ int main(int argc, char **argv)
 				fputc('\n', stderr);
 				fflush(stderr);
 				error++;
-				goto no_go;
+				break;
 			}
 #ifdef DEBUG
 			printf("DEBUG: found stream #%d starting at position %ld with size %ld\n",
-			       stream, pmatch.start, pmatch.end - pmatch.start);
+			       stream, buffer.pos, buffer.size);
+			printf("DEBUG: loading entire stream into buffer...\n");
 			fflush(stdout);
 #endif
+
+			/* create filename for data */
+			sprintf(stpcpy(stpcpy(dataname, basename(filename)),
+				       ".data"),
+				".%d", stream);
+
+			// TODO: this thing
+			uncompress_and_save(buffer.ptr, buffer.size, dataname);
+
 			stream++;
 		}
 
-		// TODO: this thing
-		//uncompress_and_save();
 	no_go:
 #ifdef DEBUG
 		printf("DEBUG: Closing %s\n", filename);
