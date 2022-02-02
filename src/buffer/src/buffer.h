@@ -44,41 +44,41 @@ typedef struct buffer {
  * construct a new buffer structure to be "nothing"
  * @param buffer  [description]
  */
-void buffer_buf_construct(buf_t *buffer);
+void buffer_construct(buf_t *buffer);
 
 /**
  * initialize internal buffer based on structure's size parameter
  * @param  buffer               [description]
  * @return        0 on success, -1 on failure (see errno)
  */
-int buffer_buf_init(buf_t *buffer);
+int buffer_init(buf_t *buffer);
 
 /**
  * initialize buf_t compile-time defaults
  * @param  buffer               [description]
  * @return        0 on success, -1 on failure (see errno)
  */
-int buffer_buf_init_defaults(buf_t *buffer);
+int buffer_init_defaults(buf_t *buffer);
 
 /**
  * free internal buffer
  * @param buffer  [description]
  */
-void buffer_buf_free(buf_t *buffer);
+void buffer_free(buf_t *buffer);
 
 /**
  * close a previously opened file
  * @param  buffer               [description]
  * @return        0 on success, -1 on failure (see errno)
  */
-int buffer_buf_close(buf_t *buffer);
+int buffer_close(buf_t *buffer);
 
 /**
  * test whether buffer has reached (or gone past) the real eof
  * @param  buffer               [description]
  * @return        0 if not EOF, 1 if EOF
  */
-int buffer_buf_eof(buf_t *buffer);
+int buffer_eof(buf_t *buffer);
 
 /**
  * set the position of the frame within the current file. doesn't refresh buffer.
@@ -87,14 +87,14 @@ int buffer_buf_eof(buf_t *buffer);
  * @param  whence               [description]
  * @return        0 on success, -1 on failure (see errno)
  */
-int buffer_buf_frame_seek(buf_t *buffer, off_t offset, int whence);
+int buffer_seek(buf_t *buffer, off_t offset, int whence);
 
 /**
  * a more intuitive way of seeking to the start of the file
  * @param  buffer               [description]
  * @return        0 on success, -1 on failure (see errno)
  */
-int buffer_buf_frame_rewind(buf_t *buffer);
+int buffer_rewind(buf_t *buffer);
 
 /**
  * open a file readonly (for rbuf functions)
@@ -102,7 +102,7 @@ int buffer_buf_frame_rewind(buf_t *buffer);
  * @param  path                 path to file
  * @return        0 on success, -1 on failure (see errno)
  */
-int buffer_rbuf_open(rbuf_t *buffer, const char *path);
+int buffer_openr(rbuf_t *buffer, const char *path);
 
 /**
  * load the current frame at the real file offset (modifies file offset, no seek)
@@ -110,35 +110,35 @@ int buffer_rbuf_open(rbuf_t *buffer, const char *path);
  * @param  buffer               [description]
  * @return        0 on success, -1 on failure (see errno)
  */
-int buffer_rbuf_frame_load(rbuf_t *buffer);
+int buffer_readr(rbuf_t *buffer);
 
 /**
  * seeks and refreshes the current frame
  * @param  buffer               [description]
  * @return        0 on success, -1 on failure (see errno)
  */
-int buffer_rbuf_frame_seek(rbuf_t *buffer, off_t offset, int whence);
+int buffer_seekr(rbuf_t *buffer, off_t offset, int whence);
 
 /**
  * rewinds and refreshes the current frame
  * @param  buffer               [description]
  * @return        0 on success, -1 on failure (see errno)
  */
-int buffer_rbuf_frame_rewind(rbuf_t *buffer);
+int buffer_rewindr(rbuf_t *buffer);
 
 /**
  * reload the current frame at the current position (doesn't modify file offset)
  * @param  buffer               [description]
  * @return        0 on success, -1 on failure (see errno)
  */
-int buffer_rbuf_frame_reload(rbuf_t *buffer);
+int buffer_reloadr(rbuf_t *buffer);
 
 /**
  * resets the position and size of the frame
  * @param  buffer               [description]
  * @return        0 on success, -1 on failure (see errno)
  */
-int buffer_rbuf_frame_reset(rbuf_t *buffer);
+int buffer_resetr(rbuf_t *buffer);
 
 /**
  * open a file writeonly (for wbuf functions)
@@ -146,7 +146,7 @@ int buffer_rbuf_frame_reset(rbuf_t *buffer);
  * @param  path                 path to file (doesn't have to exist)
  * @return        0 on success, -1 on failure (see errno)
  */
-int buffer_wbuf_open(wbuf_t *buffer, const char *path);
+int buffer_openw(wbuf_t *buffer, const char *path);
 
 /**
  * commit the current frame at the real file offset (modifies file offset and st_size, no seek)
@@ -154,6 +154,6 @@ int buffer_wbuf_open(wbuf_t *buffer, const char *path);
  * @param  buffer               [description]
  * @return        0 on success, -1 on failure (see errno)
  */
-int buffer_wbuf_frame_commit(wbuf_t *buffer);
+int buffer_writew(wbuf_t *buffer);
 
 #endif

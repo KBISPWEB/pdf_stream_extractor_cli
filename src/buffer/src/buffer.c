@@ -22,7 +22,7 @@
 #define BUFFER_DEFAULT_EXPAND 1023
 #endif
 
-void buffer_buf_construct(buf_t *buffer)
+void buffer_construct(buf_t *buffer)
 {
 	buffer->ptr = NULL;
 	buffer->size = 0;
@@ -35,7 +35,7 @@ void buffer_buf_construct(buf_t *buffer)
 /**
  * initialize internal buffer based on structure's size parameter
  */
-int buffer_buf_init(buf_t *buffer)
+int buffer_init(buf_t *buffer)
 {
 	void *tmp;
 
@@ -57,18 +57,18 @@ int buffer_buf_init(buf_t *buffer)
 /**
  * initialize buf_t compile-time defaults
  */
-int buffer_buf_init_defaults(buf_t *buffer)
+int buffer_init_defaults(buf_t *buffer)
 {
 	buffer->size = BUFFER_DEFAULT_SIZE;
 	buffer->size_e = BUFFER_DEFAULT_EXPAND;
 
-	return buffer_buf_init(buffer);
+	return buffer_init(buffer);
 }
 
 /**
  * free internal buffer
  */
-void buffer_buf_free(buf_t *buffer)
+void buffer_free(buf_t *buffer)
 {
 	free(buffer->ptr);
 	buffer->ptr = NULL;
@@ -78,7 +78,7 @@ void buffer_buf_free(buf_t *buffer)
 /**
  * close a previously opened file
  */
-int buffer_buf_close(buf_t *buffer)
+int buffer_close(buf_t *buffer)
 {
 #if defined(OS_LINUX)
 	return close(buffer->filedes);
@@ -88,7 +88,7 @@ int buffer_buf_close(buf_t *buffer)
 #endif
 }
 
-int buffer_buf_eof(buf_t *buffer)
+int buffer_eof(buf_t *buffer)
 {
 	return (buffer->actual_pos > buffer->st_size);
 }
@@ -96,7 +96,7 @@ int buffer_buf_eof(buf_t *buffer)
 /**
  * set the position of the frame within the current file. doesn't refresh buffer.
  */
-int buffer_buf_frame_seek(buf_t *buffer, off_t offset, int whence)
+int buffer_seek(buf_t *buffer, off_t offset, int whence)
 {
 	off_t new_pos;
 
@@ -131,15 +131,15 @@ int buffer_buf_frame_seek(buf_t *buffer, off_t offset, int whence)
 /**
  * a more intuitive way of seeking to the start of the file
  */
-int buffer_buf_frame_rewind(buf_t *buffer)
+int buffer_rewind(buf_t *buffer)
 {
-	return buffer_buf_frame_seek(buffer, 0, SEEK_SET);
+	return buffer_seek(buffer, 0, SEEK_SET);
 }
 
 /**
  * open a file readonly (for rbuf functions)
  */
-int buffer_rbuf_open(rbuf_t *buffer, const char *path)
+int buffer_openr(rbuf_t *buffer, const char *path)
 {
 #if defined(OS_LINUX)
 	struct stat buf;
@@ -156,14 +156,14 @@ int buffer_rbuf_open(rbuf_t *buffer, const char *path)
 	return -1;
 #endif
 
-	return buffer_rbuf_frame_rewind(buffer);
+	return buffer_rewindr(buffer);
 }
 
 /**
  * load the current frame at the real file offset (modifies file offset, no seek)
  * Acts like a pager
  */
-int buffer_rbuf_frame_load(rbuf_t *buffer)
+int buffer_readr(rbuf_t *buffer)
 {
 	ssize_t bytes_read;
 
@@ -190,42 +190,42 @@ int buffer_rbuf_frame_load(rbuf_t *buffer)
 /**
  * seeks and refreshes the current frame
  */
-int buffer_rbuf_frame_seek(rbuf_t *buffer, off_t offset, int whence)
+int buffer_seekr(rbuf_t *buffer, off_t offset, int whence)
 {
-	if (buffer_buf_frame_seek((buf_t *)buffer, offset, whence))
+	if (buffer_seek((buf_t *)buffer, offset, whence))
 		return -1;
 
-	return buffer_rbuf_frame_load(buffer);
+	return buffer_loadr(buffer);
 }
 
 /**
  * rewinds and refreshes the current frame
  */
-int buffer_rbuf_frame_rewind(rbuf_t *buffer)
+int buffer_rewindr(rbuf_t *buffer)
 {
-	if (buffer_buf_frame_rewind((buf_t *)buffer))
+	if (buffer_buf_rewind((buf_t *)buffer))
 		return -1;
 
-	return buffer_rbuf_frame_load(buffer);
+	return buffer_loadr(buffer);
 }
 
 /**
  * reload the current frame at the current position (doesn't modify file offset)
  */
-int buffer_rbuf_frame_reload(rbuf_t *buffer)
+int buffer_reloadr(rbuf_t *buffer)
 {
-	return buffer_rbuf_frame_seek(buffer, buffer->pos, SEEK_SET);
+	return buffer_seekr(buffer, buffer->pos, SEEK_SET);
 }
 
 /**
  * resets the position and size of the frame
  */
-int buffer_rbuf_frame_reset(rbuf_t *buffer)
+int buffer_resetr(rbuf_t *buffer)
 {
-	if (buffer_buf_init_defaults((buf_t *)buffer))
+	if (buffer_init_defaults((buf_t *)buffer))
 		return -1;
 
-	if (buffer_rbuf_frame_reload(buffer))
+	if (buffer_reloadr(buffer))
 		return -1;
 
 	return 0;
@@ -234,7 +234,7 @@ int buffer_rbuf_frame_reset(rbuf_t *buffer)
 /**
  * open a file writeonly (for wbuf functions)
  */
-int buffer_wbuf_open(wbuf_t *buffer, const char *path)
+int buffer_openw(wbuf_t *buffer, const char *path)
 {
 #if defined(OS_LINUX)
 	struct stat buf;
@@ -251,14 +251,14 @@ int buffer_wbuf_open(wbuf_t *buffer, const char *path)
 	return -1;
 #endif
 
-	return buffer_buf_frame_rewind((but_t *)buffer);
+	return buffer_rewind((but_t *)buffer);
 }
 
 /**
  * commit the current frame at the real file offset (modifies file offset and st_size, no seek)
  * Acts like a pager
  */
-int buffer_wbuf_frame_commit(wbuf_t *buffer)
+int buffer_writew(wbuf_t *buffer)
 {
 	// TODO: WRITE, DON'T READ.
 	ssize_t bytes_read;
