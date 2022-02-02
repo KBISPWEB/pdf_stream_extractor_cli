@@ -42,6 +42,33 @@ int buffer_resize(buf_t *buffer, size_t size)
 	return 0;
 }
 
+void *buffer_get_bufptr(buf_t *buffer)
+{
+	return buffer->buf.ptr;
+}
+
+size_t buffer_get_bufsize(buf_t *buffer)
+{
+	return buffer->buf.size;
+}
+
+int buffer_set_datalength(buf_t *buffer, size_t datalength)
+{
+	if (datalength > buffer->buf.size) {
+		errno = ENOMEM;
+		return -1;
+	}
+
+	buffer->datalength = datalength;
+
+	return 0;
+}
+
+size_t buffer_get_datalength(buf_t *buffer)
+{
+	return buffer->datalength;
+}
+
 /**
  * open a file readonly (for rbuf functions)
  */
@@ -193,7 +220,7 @@ int buffer_write(buf_t *buffer)
 
 #if defined(OS_LINUX)
 	if ((bytes_wrote = write(buffer->filedes, buffer->buf.ptr,
-				 buffer->data_length)) == -1)
+				 buffer->datalength)) == -1)
 		return -1;
 #else
 	errno = ENOSYS;
@@ -202,11 +229,11 @@ int buffer_write(buf_t *buffer)
 	/* move remaining data to the front of the buffer, if any */
 	if (bytes_wrote < buffer->buf.data_length)
 		memmove(buffer->buf.ptr, buffer->buf.ptr + bytes_wrote,
-			buffer->data_length - bytes_wrote);
+			buffer->datalength - bytes_wrote);
 
 	/* fill the rest of the buffer with zeroes */
 	memset(buffer->buf.ptr + bytes_wrote, 0,
-	       buffer->data_length - bytes_wrote);
+	       buffer->datalength - bytes_wrote);
 
 	buffer->offset += bytes_wrote;
 

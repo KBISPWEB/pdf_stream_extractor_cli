@@ -135,21 +135,24 @@ int get_stream(buf_t *buffer)
 	return 1;
 }
 
-int uncompress_and_save(const char *bufp, const size_t size, const char *path)
+int uncompress_and_save(buf_t *buffer_in, const char *path)
 {
 	z_stream infstream = { 0 }; /* zero-init so pointers are null */
 
 	buf_t buffer_out;
 
-	buffer_construct(&buffer_out);
-	buffer_init_defaults(&buffer_out);
+	buffer_init(&buffer_out);
 
-	buffer_openw(&buffer_out, path);
+	buffer_open(&buffer_out, path, O_WRONLY);
 
-	infstream.next_in = (Bytef *)bufp; /* input char buffer */
-	infstream.avail_in = (uInt)size; /* size of input buffer */
-	infstream.next_out = (Bytef *)(buffer_out.ptr); /* output char array */
-	infstream.avail_out = (uInt)(buffer_out.size); /* size of output */
+	/* input char buffer */
+	infstream.next_in = (Bytef *)buffer_get_bufptr(buffer_in);
+	/* size of input buffer */
+	infstream.avail_in = (uInt)buffer_get_datalength(buffer_in);
+	/* output char array */
+	infstream.next_out = (Bytef *)buffer_get_bufptr(buffer_out);
+	/* size of output */
+	infstream.avail_out = (uInt)buffer_get_bufsize(buffer_out);
 
 #ifdef DEBUG
 	printf("DEBUG: uncompressing stream data\n", path);
@@ -157,9 +160,21 @@ int uncompress_and_save(const char *bufp, const size_t size, const char *path)
 #endif
 
 	inflateInit(&infstream);
+
 	// TODO: uncompress raw data using zlib
 	while (inflate(&infstream, Z_NO_FLUSH) != Z_STREAM_END) {
 		// TODO: save uncompressed data
+		/* save data, clear output buffer */
+		if (infstream.avail_out == 0) {
+			buffer_set_datalength(buffer_out, );
+			buffer_write(buffer_out);
+			infstream.avail_out =
+				(uInt)buffer_get_bufsize(buffer_out);
+			infstream.avail_in =
+				(uInt)buffer_get_datalength(buffer_in);
+		}
+		if (infstream.avail_in == 0) {
+		}
 	}
 
 	inflateEnd(&infstream);

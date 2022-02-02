@@ -6,7 +6,7 @@
 #define BUFFER_H
 
 typedef struct buffer {
-	size_t data_length; /* size of the data in the buffer in bytes */
+	size_t datalength; /* size of the data in the buffer in bytes */
 
 	struct {
 		void *ptr; /* operation buffer */
@@ -30,6 +30,11 @@ void buffer_init(buf_t *buffer);
  * @return        0 on success, -1 on failure (see errno)
  */
 int buffer_resize(buf_t *buffer, size_t size);
+
+void *buffer_get_bufptr(buf_t *buffer);
+size_t buffer_get_bufsize(buf_t *buffer);
+int buffer_set_datalength(buf_t *buffer, size_t datalength);
+size_t buffer_get_datalength(buf_t *buffer);
 
 /**
  * open a file readonly (for rbuf functions)
