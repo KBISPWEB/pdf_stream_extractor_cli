@@ -66,95 +66,85 @@ const void *memmem(const void *s1, const void *s2, size_t n, const size_t size)
 	return s1 + offset;
 }
 
-int advance_to_str(buf_t *buffer, const char *substr)
+/* returns 1 if found, 0 if not found, and -1 on failure */
+int find_str(buf_t *buffer, const char *substr, size_t size)
 {
+	off_t offset;
+	off_t filesize = buffer_get_filesize(buffer);
+
 	const void *sp;
-	size_t size = strlen(substr);
 
 	while ((sp = memmem(buffer->ptr, substr, size, buffer->size)) == NULL) {
 		/* advance as much as we can */
-		if (buffer_rbuf_frame_seek(buffer, buffer->size - size,
-					   SEEK_CUR)) {
-			fputs("error: buffer_rbuf_frame_seek: ", stderr);
+		if ((offset = buffer_seek(buffer, buffer->size - size,
+					  SEEK_CUR)) == -1)
 			return -1;
-		}
 
 		/* went past EOF, so it's not in the current file. */
-		if (buffer_buf_eof(buffer))
-			return EOF;
+		if (offset > filesize)
+			return 0;
 	}
 
 	/* found what we were looking for. advance up to it */
-	if (buffer_rbuf_frame_seek(buffer, sp - buffer->ptr, SEEK_CUR)) {
-		fputs("error: buffer_rbuf_frame_seek: ", stderr);
+	if ((offset = buffer_seek(buffer, sp - buffer->ptr, SEEK_CUR)) == -1)
 		return -1;
-	}
 
-	return 0;
+	return 1;
 }
 
+/* returns 1 if found, 0 if not found, and -1 on failure */
 int get_stream(buf_t *buffer)
 {
-	off_t start;
+	off_t offset = 0;
 	int ret;
 
-	/* make sure we have enough space here. */
-	if (buffer_rbuf_frame_reset(buffer)) {
-		fputs("error: buffer_rbuf_frame_reset: ", stderr);
-		fputs(strerror(errno), stderr);
-		fputc('\n', stderr);
-		fflush(stderr);
+	/* make sure we have enough space here. LCM(11, 6, 9) * 2 = 396 */
+	if (buffer_resize(buffer, 396);
 		return -1;
-	}
 
 	/* Search for FlateDecode */
-	if ((ret = advance_to_str(buffer, "FlateDecode")))
+	if ((ret = find_str(buffer, "FlateDecode", 11)) <= 0)
 		return ret;
 
 	/* Search for stream start */
-	if ((ret = advance_to_str(buffer, "stream")))
+	if ((ret = find_str(buffer, "stream", 6)) <= 0)
 		return ret;
 
 	/* currently at \"stream\". I want to get to the start of the data.*/
-	start = buffer->pos + 6;
+	start = buffer_get_filepos(buffer) + 6;
 
 	/* Search for stream end */
-	if ((ret = advance_to_str(buffer, "endstream")))
+	if ((ret = find_str(buffer, "endstream", 9)) <= 0)
 		return ret;
 
 	/* make sure the frame is the correct size */
-	buffer->size = buffer->pos - start;
-
-	if (buffer_buf_init(buffer)) {
-		fputs("error: buffer_buf_init: ", stderr);
-		fputs(strerror(errno), stderr);
-		fputc('\n', stderr);
-		fflush(stderr);
+	if (buffer_resize(buffer, buffer_get_filepos(buffer) - start))
 		return -1;
-	}
+
+#ifdef DEBUG
+	printf("DEBUG: found stream #%d starting at position %ld with size %ld\n",
+	       stream, buffer.pos, buffer.size);
+	printf("DEBUG: loading entire stream into buffer...\n");
+	fflush(stdout);
+#endif
 
 	/* position buffer over entire stream */
-	if (buffer_rbuf_frame_seek(buffer, start, SEEK_SET)) {
-		fputs("error: buffer_rbuf_frame_seek: ", stderr);
-		fputs(strerror(errno), stderr);
-		fputc('\n', stderr);
-		fflush(stderr);
+	if (buffer_seek(buffer, start, SEEK_SET))
 		return -1;
-	}
 
-	return 0;
+	return 1;
 }
 
 int uncompress_and_save(const char *bufp, const size_t size, const char *path)
 {
 	z_stream infstream = { 0 }; /* zero-init so pointers are null */
 
-	wbuf_t buffer_out;
+	buf_t buffer_out;
 
-	buffer_buf_construct((but_t *)&buffer_out);
-	buffer_buf_init_defaults((buf_t *)&buffer_out);
+	buffer_construct(&buffer_out);
+	buffer_init_defaults(&buffer_out);
 
-	buffer_wbuf_open(&buffer_out, path);
+	buffer_openw(&buffer_out, path);
 
 	infstream.next_in = (Bytef *)bufp; /* input char buffer */
 	infstream.avail_in = (uInt)size; /* size of input buffer */
@@ -181,7 +171,7 @@ int uncompress_and_save(const char *bufp, const size_t size, const char *path)
 	printf("saved ./%s \n", path);
 	fflush(stdout);
 
-	buffer_buf_free((buf_t *)&buffer_out);
+	buffer_free(&buffer_out);
 }
 
 int main(int argc, char **argv)
@@ -192,7 +182,7 @@ int main(int argc, char **argv)
 	const char *filename;
 	char dataname[NAME_MAX];
 
-	rbuf_t buffer;
+	buf_t buffer;
 	size_t orig_size;
 
 	if (argc <= 1) {
@@ -206,17 +196,7 @@ int main(int argc, char **argv)
 	fflush(stdout);
 #endif
 
-	buffer_buf_construct((buf_t *)&buffer);
-
-	/* build buffer */
-	if (buffer_buf_init_defaults((buf_t *)&buffer)) {
-		fputs("Initialization failure: buffer_buf_init_defaults: ",
-		      stderr);
-		fputs(strerror(errno), stderr);
-		fputc('\n', stderr);
-		fflush(stderr);
-		return 1;
-	}
+	buffer_init(&buffer);
 
 	/* Every parameter specifies a file name */
 	for (i = 1; i < argc; i++) {
@@ -227,9 +207,17 @@ int main(int argc, char **argv)
 		fflush(stdout);
 #endif
 
-		if (buffer_rbuf_open(&buffer, filename)) {
-			fprintf(stderr, "error opening %s: ", filename);
-			fputs("buffer_rbuf_open: ", stderr);
+		if (buffer_open(&buffer, filename, O_RDONLY)) {
+			fprintf(stderr, "error: opening %s: ", filename);
+			fputs(strerror(errno), stderr);
+			fputc('\n', stderr);
+			fflush(stderr);
+			error++;
+			continue;
+		}
+
+		if (buffer_read(&buffer)) {
+			fprintf(stderr, "error: reading %s: ", filename);
 			fputs(strerror(errno), stderr);
 			fputc('\n', stderr);
 			fflush(stderr);
@@ -245,8 +233,7 @@ int main(int argc, char **argv)
 #endif
 
 		if (!is_pdf(&buffer)) {
-			fprintf(stderr,
-				"error: When validating %s: ", filename);
+			fprintf(stderr, "error: validating %s: ", filename);
 			fputs("The file doesn't contain a valid PDF signature.\n",
 			      stderr);
 			fflush(stderr);
@@ -257,23 +244,7 @@ int main(int argc, char **argv)
 		// TODO: Do this until there are no more streams.
 		stream = 0;
 		errno = 0;
-		while ((ret = get_stream(&buffer)) != EOF) {
-			if (ret) {
-				fprintf(stderr, "When scanning scanning %s: ",
-					filename);
-				fputs(strerror(errno), stderr);
-				fputc('\n', stderr);
-				fflush(stderr);
-				error++;
-				break;
-			}
-#ifdef DEBUG
-			printf("DEBUG: found stream #%d starting at position %ld with size %ld\n",
-			       stream, buffer.pos, buffer.size);
-			printf("DEBUG: loading entire stream into buffer...\n");
-			fflush(stdout);
-#endif
-
+		while ((ret = get_stream(&buffer)) == 0) {
 			/* create filename for data */
 			sprintf(stpcpy(stpcpy(dataname, basename(filename)),
 				       ".data"),
@@ -284,6 +255,14 @@ int main(int argc, char **argv)
 
 			stream++;
 		}
+		if (ret < 0) {
+			fprintf(stderr, "error: scanning %s: ", filename);
+			fputs(strerror(errno), stderr);
+			fputc('\n', stderr);
+			fflush(stderr);
+			error++;
+			break;
+		}
 
 	no_go:
 #ifdef DEBUG
@@ -291,13 +270,12 @@ int main(int argc, char **argv)
 		fflush(stdout);
 #endif
 
-		buffer_buf_close((buf_t *)&buffer);
+		buffer_close(&buffer);
 	}
 
 #ifdef DEBUG
 	printf("DEBUG: Cleanup.\n");
 	fflush(stdout);
 #endif
-	buffer_buf_free((buf_t *)&buffer);
 	return error;
 }

@@ -17,62 +17,54 @@
 #define BUFFER_DEFAULT_SIZE 1023
 #endif
 
-#ifndef BUFFER_DEFAULT_EXPAND
-/* default frame expansion - default 1KiB */
-#define BUFFER_DEFAULT_EXPAND 1023
-#endif
-
-void buffer_construct(buf_t *buffer)
+void buffer_init(buf_t *buffer)
 {
-	buffer->ptr = NULL;
-	buffer->size = 0;
+	buffer->data_length = 0;
+	buffer->buf.ptr = NULL;
+	buffer->buf.size = BUFFER_DEFAULT_SIZE;
 	buffer->filedes = -1;
-	buffer->st_size = 0;
-	buffer->actual_pos = 0;
-	buffer->pos = 0;
 }
 
-/**
- * initialize internal buffer based on structure's size parameter
- */
-int buffer_init(buf_t *buffer)
+int buffer_resize(buf_t *buffer, size_t size)
 {
 	void *tmp;
 
-	tmp = realloc(buffer->ptr, buffer->size + 1);
+	tmp = realloc(buffer->buf.ptr, size);
 
-	if ((tmp == NULL) && (buffer->size != 0)) {
+	if ((tmp == NULL) && (size != 0)) {
 		errno = ENOMEM;
 		return -1;
 	}
 
-	buffer->ptr = tmp;
-
-	/* 0-initialize the whole thing */
-	memset(buffer->ptr, 0, buffer->size + 1);
+	buffer->buf.ptr = tmp;
+	buffer->buf.size = size;
 
 	return 0;
 }
 
 /**
- * initialize buf_t compile-time defaults
+ * open a file readonly (for rbuf functions)
  */
-int buffer_init_defaults(buf_t *buffer)
+int buffer_open(buf_t *buffer, const char *path, int oflag)
 {
-	buffer->size = BUFFER_DEFAULT_SIZE;
-	buffer->size_e = BUFFER_DEFAULT_EXPAND;
+#if defined(OS_LINUX)
+	if ((buffer->filedes = open(path, oflag)) == -1)
+		return -1;
+#else
+	errno = ENOSYS;
+	return -1;
+#endif
 
-	return buffer_init(buffer);
-}
+	if (buffer_resize(buffer, buffer->buf.size))
+		return -1;
 
-/**
- * free internal buffer
- */
-void buffer_free(buf_t *buffer)
-{
-	free(buffer->ptr);
-	buffer->ptr = NULL;
-	buffer->size = 0;
+	/* ALWAYS initialize this memory */
+	memset(buffer->buf.ptr, 0, buffer->buf.size);
+
+	if (buffer_rewind(buffer))
+		return -1;
+
+	return 0;
 }
 
 /**
@@ -80,205 +72,143 @@ void buffer_free(buf_t *buffer)
  */
 int buffer_close(buf_t *buffer)
 {
+	free(buffer->buf.ptr);
+	buffer->buf.ptr = NULL;
+
 #if defined(OS_LINUX)
-	return close(buffer->filedes);
+	if (close(buffer->filedes))
+		return -1;
 #else
 	errno = ENOSYS;
 	return -1;
 #endif
+
+	buffer->filedes = -1;
 }
 
-int buffer_eof(buf_t *buffer)
+off_t buffer_get_filesize(buf_t *buffer)
 {
-	return (buffer->actual_pos > buffer->st_size);
+#if defined(OS_LINUX)
+	struct stat buf;
+
+	if (fstat(buffer->file.des, &buf))
+		return -1;
+
+	return buf.st_size;
+#else
+	errno = ENOSYS;
+	return -1;
+#endif
 }
 
 /**
  * set the position of the frame within the current file. doesn't refresh buffer.
  */
-int buffer_seek(buf_t *buffer, off_t offset, int whence)
+off_t buffer_seek(buf_t *buffer, off_t offset, int whence)
 {
-	off_t new_pos;
-
-	switch (whence) {
-	case SEEK_SET:
-		new_pos = offset;
-		break;
-	case SEEK_CUR:
-		new_pos = buffer->pos + offset;
-		break;
-	case SEEK_END:
-		new_pos = buffer->st_size - offset;
-		break;
-	default:
-		errno = EINVAL;
-		return -1;
-	}
-
 #if defined(OS_LINUX)
-	if ((new_pos = lseek(buffer->filedes, new_pos, SEEK_SET)) == -1)
+	if ((offset = lseek(buffer->file.des, offset, whence)) == -1)
 		return -1;
 #else
 	errno = ENOSYS;
 	return -1;
 #endif
 
-	buffer->actual_pos = buffer->pos = new_pos;
+	buffer->offset = offset;
 
-	return 0;
+	return offset;
 }
 
 /**
  * a more intuitive way of seeking to the start of the file
  */
-int buffer_rewind(buf_t *buffer)
+off_t buffer_rewind(buf_t *buffer)
 {
-	return buffer_seek(buffer, 0, SEEK_SET);
+	if (buffer_seek(buffer, 0, SEEK_SET))
+		return -1;
+
+	buffer->offset = 0;
+
+	return 0;
 }
 
-/**
- * open a file readonly (for rbuf functions)
- */
-int buffer_openr(rbuf_t *buffer, const char *path)
+off_t buffer_get_filepos(buf_t *buffer)
 {
-#if defined(OS_LINUX)
-	struct stat buf;
-
-	if ((buffer->filedes = open(path, O_RDONLY)) == -1)
-		return -1;
-
-	if (stat(path, &buf))
-		return -1;
-
-	buffer->st_size = buf.st_size;
-#else
-	errno = ENOSYS;
-	return -1;
-#endif
-
-	return buffer_rewindr(buffer);
+	return buffer->offset;
 }
 
 /**
  * load the current frame at the real file offset (modifies file offset, no seek)
  * Acts like a pager
  */
-int buffer_readr(rbuf_t *buffer)
+int buffer_read(buf_t *buffer)
 {
 	ssize_t bytes_read;
 
-	buffer->pos = buffer->actual_pos;
-
 #if defined(OS_LINUX)
-	if ((bytes_read = read(buffer->filedes, buffer->ptr, buffer->size)) ==
-	    -1)
+	/* this is honestly the best way I could think of to get the correct offset */
+	struct stat buf;
+
+	if (fstat(buffer->filedes, &buf))
+		return -1;
+
+	buffer->offset = buf.st_offset;
+
+	if ((bytes_read = read(buffer->filedes, buffer->buf.ptr,
+			       buffer->buf.size)) == -1)
 		return -1;
 #else
 	errno = ENOSYS;
 	return -1;
 #endif
-	if (bytes_read < buffer->size) {
-		*((char *)(buffer->ptr + bytes_read)) = 0;
-		// maybe set an EOF flag?
-	}
+	/* fill the rest of the buffer with zeroes */
+	if (bytes_read < buffer->buf.size)
+		memset(buffer->buf.ptr + bytes_read, 0,
+		       buffer->buf.size - bytes_read);
 
-	buffer->actual_pos = buffer->pos + bytes_read;
+	buffer->data_length = bytes_read;
 
 	return 0;
-}
-
-/**
- * seeks and refreshes the current frame
- */
-int buffer_seekr(rbuf_t *buffer, off_t offset, int whence)
-{
-	if (buffer_seek((buf_t *)buffer, offset, whence))
-		return -1;
-
-	return buffer_loadr(buffer);
-}
-
-/**
- * rewinds and refreshes the current frame
- */
-int buffer_rewindr(rbuf_t *buffer)
-{
-	if (buffer_buf_rewind((buf_t *)buffer))
-		return -1;
-
-	return buffer_loadr(buffer);
 }
 
 /**
  * reload the current frame at the current position (doesn't modify file offset)
  */
-int buffer_reloadr(rbuf_t *buffer)
+int buffer_reload(buf_t *buffer)
 {
-	return buffer_seekr(buffer, buffer->pos, SEEK_SET);
-}
-
-/**
- * resets the position and size of the frame
- */
-int buffer_resetr(rbuf_t *buffer)
-{
-	if (buffer_init_defaults((buf_t *)buffer))
+	if (buffer_seek(buffer, -buffer->buf.size, SEEK_CUR))
 		return -1;
 
-	if (buffer_reloadr(buffer))
-		return -1;
-
-	return 0;
-}
-
-/**
- * open a file writeonly (for wbuf functions)
- */
-int buffer_openw(wbuf_t *buffer, const char *path)
-{
-#if defined(OS_LINUX)
-	struct stat buf;
-
-	if ((buffer->filedes = open(path, O_WRONLY)) == -1)
-		return -1;
-
-	if (stat(path, &buf))
-		return -1;
-
-	buffer->st_size = buf.st_size;
-#else
-	errno = ENOSYS;
-	return -1;
-#endif
-
-	return buffer_rewind((but_t *)buffer);
+	return buffer_read(buffer);
 }
 
 /**
  * commit the current frame at the real file offset (modifies file offset and st_size, no seek)
  * Acts like a pager
  */
-int buffer_writew(wbuf_t *buffer)
+int buffer_write(buf_t *buffer)
 {
 	// TODO: WRITE, DON'T READ.
-	ssize_t bytes_read;
-
-	buffer->pos = buffer->actual_pos;
+	ssize_t bytes_wrote;
 
 #if defined(OS_LINUX)
-	if ((bytes_read = read(buffer->filedes, buffer->ptr, buffer->size)) ==
-	    -1)
+	if ((bytes_wrote = write(buffer->filedes, buffer->buf.ptr,
+				 buffer->data_length)) == -1)
 		return -1;
 #else
 	errno = ENOSYS;
 	return -1;
 #endif
-	if (bytes_read < buffer->size) {
-		*((char *)(buffer->ptr + bytes_read)) = 0;
-		// maybe set an EOF flag?
-	}
+	/* move remaining data to the front of the buffer, if any */
+	if (bytes_wrote < buffer->buf.data_length)
+		memmove(buffer->buf.ptr, buffer->buf.ptr + bytes_wrote,
+			buffer->data_length - bytes_wrote);
 
-	buffer->actual_pos = buffer->pos + bytes_read;
+	/* fill the rest of the buffer with zeroes */
+	memset(buffer->buf.ptr + bytes_wrote, 0,
+	       buffer->data_length - bytes_wrote);
+
+	buffer->offset += bytes_wrote;
 
 	return 0;
 }
