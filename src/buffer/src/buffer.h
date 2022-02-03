@@ -2,26 +2,23 @@
 
 #include <stdio.h>
 
+#ifdef OS_LINUX
+/* O_RDONLY, O_WRONLY, O_RDWR, etc. */
+#include <fcntl.h>
+#endif
+
 #ifndef BUFFER_H
 #define BUFFER_H
 
-typedef struct buffer {
-	size_t datalength; /* size of the data in the buffer in bytes */
-
-	struct {
-		void *ptr; /* operation buffer */
-		size_t size; /* size of the buffer in bytes */
-	} buf;
-
-	int filedes; /* filedes number */
-	off_t offset; /* offset in file from where the start of buffer is */
-} buf_t;
+typedef struct buffer *buffer_t;
 
 /**
  * construct a new buffer structure to be "nothing"
  * @param buffer  [description]
  */
-void buffer_init(buf_t *buffer);
+buffer_t buffer_init();
+
+void buffer_free(buffer_t buffer);
 
 /**
  * resize internal buffer
@@ -29,12 +26,12 @@ void buffer_init(buf_t *buffer);
  * @param  size                 [description]
  * @return        0 on success, -1 on failure (see errno)
  */
-int buffer_resize(buf_t *buffer, size_t size);
+int buffer_resize(buffer_t buffer, size_t size);
 
-void *buffer_get_bufptr(buf_t *buffer);
-size_t buffer_get_bufsize(buf_t *buffer);
-int buffer_set_datalength(buf_t *buffer, size_t datalength);
-size_t buffer_get_datalength(buf_t *buffer);
+void *buffer_get_bufptr(buffer_t buffer);
+size_t buffer_get_bufsize(buffer_t buffer);
+int buffer_set_datalength(buffer_t buffer, size_t datalength);
+size_t buffer_get_datalength(buffer_t buffer);
 
 /**
  * open a file readonly (for rbuf functions)
@@ -42,21 +39,21 @@ size_t buffer_get_datalength(buf_t *buffer);
  * @param  path                 path to file
  * @return        0 on success, -1 on failure (see errno)
  */
-int buffer_open(buf_t *buffer, const char *path, int oflag);
+int buffer_open(buffer_t buffer, const char *path, int oflag);
 
 /**
  * close a previously opened file
  * @param  buffer               [description]
  * @return        0 on success, -1 on failure (see errno)
  */
-int buffer_close(buf_t *buffer);
+int buffer_close(buffer_t buffer);
 
 /**
  * get size of current file
  * @param  buffer               [description]
  * @return        positive number representing the size of the file, -1 on failure
  */
-off_t buffer_get_filesize(buf_t *buffer);
+off_t buffer_get_filesize(buffer_t buffer);
 
 /**
  * set the position of the frame within the current file. doesn't refresh buffer.
@@ -65,21 +62,21 @@ off_t buffer_get_filesize(buf_t *buffer);
  * @param  whence               [description]
  * @return        positive offset from the beginning of the file, -1 on failure
  */
-off_t buffer_seek(buf_t *buffer, off_t offset, int whence);
+off_t buffer_seek(buffer_t buffer, off_t offset, int whence);
 
 /**
  * a more intuitive way of seeking to the start of the file
  * @param  buffer               [description]
  * @return        positive offset from the beginning of the file, -1 on failure
  */
-off_t buffer_rewind(buf_t *buffer);
+off_t buffer_rewind(buffer_t buffer);
 
 /**
  * get position in current file
  * @param  buffer               [description]
  * @return        positive offset from the beginning of the file, -1 on failure
  */
-off_t buffer_get_filepos(buf_t *buffer);
+off_t buffer_get_filepos(buffer_t buffer);
 
 /**
  * load the current frame at the real file offset (modifies file offset, no seek)
@@ -87,14 +84,14 @@ off_t buffer_get_filepos(buf_t *buffer);
  * @param  buffer               [description]
  * @return        0 on success, -1 on failure (see errno)
  */
-int buffer_read(buf_t *buffer);
+int buffer_read(buffer_t buffer);
 
 /**
  * reload the current frame at the current position (doesn't modify file offset)
  * @param  buffer               [description]
  * @return        0 on success, -1 on failure (see errno)
  */
-int buffer_reload(buf_t *buffer);
+int buffer_reload(buffer_t buffer);
 
 /**
  * commit the current frame at the real file offset (modifies file offset and st_size, no seek)
@@ -102,6 +99,6 @@ int buffer_reload(buf_t *buffer);
  * @param  buffer               [description]
  * @return        0 on success, -1 on failure (see errno)
  */
-int buffer_write(buf_t *buffer);
+int buffer_write(buffer_t buffer);
 
 #endif

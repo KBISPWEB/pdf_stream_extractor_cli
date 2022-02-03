@@ -6,7 +6,6 @@
 
 #ifdef OS_LINUX
 #include <sys/stat.h>
-#include <fcntl.h>
 #include <unistd.h>
 #endif
 
@@ -17,15 +16,39 @@
 #define BUFFER_DEFAULT_SIZE 1023
 #endif
 
-void buffer_init(buf_t *buffer)
+struct buffer {
+	size_t datalength; /* size of the data in the buffer in bytes */
+
+	struct {
+		void *ptr; /* operation buffer */
+		size_t size; /* size of the buffer in bytes */
+	} buf;
+
+	int filedes; /* filedes number */
+	off_t offset; /* offset in file from where the start of buffer is */
+};
+
+buffer_t buffer_init()
 {
-	buffer->data_length = 0;
+	buffer_t buffer = malloc(sizeof(struct buffer));
+
+	buffer->datalength = 0;
 	buffer->buf.ptr = NULL;
 	buffer->buf.size = BUFFER_DEFAULT_SIZE;
 	buffer->filedes = -1;
+
+	return buffer;
 }
 
-int buffer_resize(buf_t *buffer, size_t size)
+void buffer_free(buffer_t buffer)
+{
+	if (buffer->filedes != -1)
+		buffer_close(buffer);
+
+	free(buffer);
+}
+
+int buffer_resize(buffer_t buffer, size_t size)
 {
 	void *tmp;
 
@@ -42,17 +65,17 @@ int buffer_resize(buf_t *buffer, size_t size)
 	return 0;
 }
 
-void *buffer_get_bufptr(buf_t *buffer)
+void *buffer_get_bufptr(buffer_t buffer)
 {
 	return buffer->buf.ptr;
 }
 
-size_t buffer_get_bufsize(buf_t *buffer)
+size_t buffer_get_bufsize(buffer_t buffer)
 {
 	return buffer->buf.size;
 }
 
-int buffer_set_datalength(buf_t *buffer, size_t datalength)
+int buffer_set_datalength(buffer_t buffer, size_t datalength)
 {
 	if (datalength > buffer->buf.size) {
 		errno = ENOMEM;
@@ -64,7 +87,7 @@ int buffer_set_datalength(buf_t *buffer, size_t datalength)
 	return 0;
 }
 
-size_t buffer_get_datalength(buf_t *buffer)
+size_t buffer_get_datalength(buffer_t buffer)
 {
 	return buffer->datalength;
 }
@@ -72,7 +95,7 @@ size_t buffer_get_datalength(buf_t *buffer)
 /**
  * open a file readonly (for rbuf functions)
  */
-int buffer_open(buf_t *buffer, const char *path, int oflag)
+int buffer_open(buffer_t buffer, const char *path, int oflag)
 {
 #if defined(OS_LINUX)
 	if ((buffer->filedes = open(path, oflag)) == -1)
@@ -97,7 +120,7 @@ int buffer_open(buf_t *buffer, const char *path, int oflag)
 /**
  * close a previously opened file
  */
-int buffer_close(buf_t *buffer)
+int buffer_close(buffer_t buffer)
 {
 	free(buffer->buf.ptr);
 	buffer->buf.ptr = NULL;
@@ -113,12 +136,12 @@ int buffer_close(buf_t *buffer)
 	buffer->filedes = -1;
 }
 
-off_t buffer_get_filesize(buf_t *buffer)
+off_t buffer_get_filesize(buffer_t buffer)
 {
 #if defined(OS_LINUX)
 	struct stat buf;
 
-	if (fstat(buffer->file.des, &buf))
+	if (fstat(buffer->filedes, &buf))
 		return -1;
 
 	return buf.st_size;
@@ -131,10 +154,10 @@ off_t buffer_get_filesize(buf_t *buffer)
 /**
  * set the position of the frame within the current file. doesn't refresh buffer.
  */
-off_t buffer_seek(buf_t *buffer, off_t offset, int whence)
+off_t buffer_seek(buffer_t buffer, off_t offset, int whence)
 {
 #if defined(OS_LINUX)
-	if ((offset = lseek(buffer->file.des, offset, whence)) == -1)
+	if ((offset = lseek(buffer->filedes, offset, whence)) == -1)
 		return -1;
 #else
 	errno = ENOSYS;
@@ -149,7 +172,7 @@ off_t buffer_seek(buf_t *buffer, off_t offset, int whence)
 /**
  * a more intuitive way of seeking to the start of the file
  */
-off_t buffer_rewind(buf_t *buffer)
+off_t buffer_rewind(buffer_t buffer)
 {
 	if (buffer_seek(buffer, 0, SEEK_SET))
 		return -1;
@@ -159,7 +182,7 @@ off_t buffer_rewind(buf_t *buffer)
 	return 0;
 }
 
-off_t buffer_get_filepos(buf_t *buffer)
+off_t buffer_get_filepos(buffer_t buffer)
 {
 	return buffer->offset;
 }
@@ -168,18 +191,13 @@ off_t buffer_get_filepos(buf_t *buffer)
  * load the current frame at the real file offset (modifies file offset, no seek)
  * Acts like a pager
  */
-int buffer_read(buf_t *buffer)
+int buffer_read(buffer_t buffer)
 {
 	ssize_t bytes_read;
 
 #if defined(OS_LINUX)
-	/* this is honestly the best way I could think of to get the correct offset */
-	struct stat buf;
 
-	if (fstat(buffer->filedes, &buf))
-		return -1;
-
-	buffer->offset = buf.st_offset;
+	buffer->offset = buffer_seek(buffer, 0, SEEK_CUR);
 
 	if ((bytes_read = read(buffer->filedes, buffer->buf.ptr,
 			       buffer->buf.size)) == -1)
@@ -193,7 +211,7 @@ int buffer_read(buf_t *buffer)
 		memset(buffer->buf.ptr + bytes_read, 0,
 		       buffer->buf.size - bytes_read);
 
-	buffer->data_length = bytes_read;
+	buffer->datalength = bytes_read;
 
 	return 0;
 }
@@ -201,7 +219,7 @@ int buffer_read(buf_t *buffer)
 /**
  * reload the current frame at the current position (doesn't modify file offset)
  */
-int buffer_reload(buf_t *buffer)
+int buffer_reload(buffer_t buffer)
 {
 	if (buffer_seek(buffer, -buffer->buf.size, SEEK_CUR))
 		return -1;
@@ -213,7 +231,7 @@ int buffer_reload(buf_t *buffer)
  * commit the current frame at the real file offset (modifies file offset and st_size, no seek)
  * Acts like a pager
  */
-int buffer_write(buf_t *buffer)
+int buffer_write(buffer_t buffer)
 {
 	// TODO: WRITE, DON'T READ.
 	ssize_t bytes_wrote;
@@ -227,7 +245,7 @@ int buffer_write(buf_t *buffer)
 	return -1;
 #endif
 	/* move remaining data to the front of the buffer, if any */
-	if (bytes_wrote < buffer->buf.data_length)
+	if (bytes_wrote < buffer->datalength)
 		memmove(buffer->buf.ptr, buffer->buf.ptr + bytes_wrote,
 			buffer->datalength - bytes_wrote);
 

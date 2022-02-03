@@ -38,10 +38,10 @@ char *get_file_filext(uint8_t *data, size_t size)
 	return ext;
 }
 
-int is_pdf(buf_t *buffer)
+int is_pdf(buffer_t buffer)
 {
 	/* check file signature */
-	if (strncmp("%PDF-", buffer->ptr, 5))
+	if (strncmp("%PDF-", buffer_get_bufptr(buffer), 5))
 		return 0;
 
 	return 1;
@@ -67,83 +67,90 @@ const void *memmem(const void *s1, const void *s2, size_t n, const size_t size)
 }
 
 /* returns 1 if found, 0 if not found, and -1 on failure */
-int find_str(buf_t *buffer, const char *substr, size_t size)
+int goto_str(buffer_t buffer, const char *substr, size_t size)
 {
-	off_t offset;
+	off_t offset = buffer_get_filepos(buffer);
 	off_t filesize = buffer_get_filesize(buffer);
+	void *bufptr = buffer_get_bufptr(buffer);
+	size_t bufsize = buffer_get_bufsize(buffer);
 
 	const void *sp;
 
-	while ((sp = memmem(buffer->ptr, substr, size, buffer->size)) == NULL) {
+	/* don't even bother if there's no data */
+	if (offset > filesize)
+		return 0;
+
+#ifdef DEBUG
+	fprintf(stderr, "DEBUG: Searching for \"%s\" starting from %ld\n",
+		substr, offset);
+	fflush(stdout);
+#endif
+
+	while ((sp = memmem(bufptr, substr, size, bufsize)) == NULL) {
 		/* advance as much as we can */
-		if ((offset = buffer_seek(buffer, buffer->size - size,
-					  SEEK_CUR)) == -1)
+		if ((offset = buffer_seek(buffer, bufsize - size, SEEK_CUR)) ==
+		    -1)
 			return -1;
 
 		/* went past EOF, so it's not in the current file. */
 		if (offset > filesize)
 			return 0;
+
+		if (buffer_read(buffer))
+			return -1;
 	}
 
 	/* found what we were looking for. advance up to it */
-	if ((offset = buffer_seek(buffer, sp - buffer->ptr, SEEK_CUR)) == -1)
+	if ((offset = buffer_seek(buffer, sp - bufptr, SEEK_CUR)) == -1)
+		return -1;
+
+	if (buffer_read(buffer))
 		return -1;
 
 	return 1;
 }
 
 /* returns 1 if found, 0 if not found, and -1 on failure */
-int get_stream(buf_t *buffer)
+int get_stream(buffer_t buffer)
 {
-	off_t offset = 0;
+	off_t start = 0;
 	int ret;
 
-	/* make sure we have enough space here. LCM(11, 6, 9) * 2 = 396 */
-	if (buffer_resize(buffer, 396);
-		return -1;
-
-	/* Search for FlateDecode */
-	if ((ret = find_str(buffer, "FlateDecode", 11)) <= 0)
+	/* go to FlateDecode FIRST */
+	if ((ret = goto_str(buffer, "FlateDecode", 11)) <= 0)
 		return ret;
 
-	/* Search for stream start */
-	if ((ret = find_str(buffer, "stream", 6)) <= 0)
+	/* go to stream start once we know we have a FlateDecode */
+	/* Assume the pdf file is in the correct format. */
+	if ((ret = goto_str(buffer, "stream", 6)) <= 0)
 		return ret;
 
 	/* currently at \"stream\". I want to get to the start of the data.*/
-	start = buffer_get_filepos(buffer) + 6;
+	if (buffer_seek(buffer, 6, SEEK_CUR) == -1)
+		return -1;
 
-	/* Search for stream end */
-	if ((ret = find_str(buffer, "endstream", 9)) <= 0)
-		return ret;
-
-	/* make sure the frame is the correct size */
-	if (buffer_resize(buffer, buffer_get_filepos(buffer) - start))
+	/* load data into buffer */
+	if (buffer_read(buffer))
 		return -1;
 
 #ifdef DEBUG
-	printf("DEBUG: found stream #%d starting at position %ld with size %ld\n",
-	       stream, buffer.pos, buffer.size);
-	printf("DEBUG: loading entire stream into buffer...\n");
+	printf("DEBUG: found stream starting at position %ld\n",
+	       buffer_get_filepos(buffer));
 	fflush(stdout);
 #endif
-
-	/* position buffer over entire stream */
-	if (buffer_seek(buffer, start, SEEK_SET))
-		return -1;
 
 	return 1;
 }
 
-int uncompress_and_save(buf_t *buffer_in, const char *path)
+int uncompress_and_save(buffer_t buffer_in, const char *path)
 {
+	int ret;
+
 	z_stream infstream = { 0 }; /* zero-init so pointers are null */
 
-	buf_t buffer_out;
+	buffer_t buffer_out = buffer_init();
 
-	buffer_init(&buffer_out);
-
-	buffer_open(&buffer_out, path, O_WRONLY);
+	buffer_open(buffer_out, path, O_WRONLY);
 
 	/* input char buffer */
 	infstream.next_in = (Bytef *)buffer_get_bufptr(buffer_in);
@@ -162,20 +169,71 @@ int uncompress_and_save(buf_t *buffer_in, const char *path)
 	inflateInit(&infstream);
 
 	// TODO: uncompress raw data using zlib
-	while (inflate(&infstream, Z_NO_FLUSH) != Z_STREAM_END) {
-		// TODO: save uncompressed data
-		/* save data, clear output buffer */
-		if (infstream.avail_out == 0) {
-			buffer_set_datalength(buffer_out, );
-			buffer_write(buffer_out);
-			infstream.avail_out =
-				(uInt)buffer_get_bufsize(buffer_out);
-			infstream.avail_in =
-				(uInt)buffer_get_datalength(buffer_in);
+	do {
+		if ((ret = inflate(&infstream, Z_NO_FLUSH)) < 0)
+			goto die;
+
+		/* can continue */
+
+		switch (ret) {
+		case Z_BUF_ERROR:
+			/* no progress was made */
+			__attribute__((fallthrough));
+		case Z_OK:
+			/* progress was made */
+			// TODO: save uncompressed data
+			/* save data, clear output buffer */
+			if (infstream.avail_out == 0) {
+				/* update next_out and avail_out */
+				if (buffer_set_datalength(
+					    buffer_out,
+					    infstream.next_out -
+						    (Bytef *)buffer_get_bufptr(
+							    buffer_out)))
+					goto die;
+
+				if (buffer_write(buffer_out))
+					goto die;
+
+				infstream.next_out =
+					(Bytef *)buffer_get_bufptr(buffer_out) +
+					infstream.avail_out;
+				infstream.avail_out =
+					(uInt)buffer_get_bufsize(buffer_out);
+				/* we probably recovered */
+				ret = Z_OK;
+			}
+			if (infstream.avail_in == 0) {
+				/* update next_in and avail_in */
+				if (buffer_read(buffer_in))
+					goto die;
+
+				infstream.next_in =
+					(Bytef *)buffer_get_bufptr(buffer_in);
+				infstream.avail_in =
+					(uInt)buffer_get_datalength(buffer_in);
+				/* we probably recovered */
+				ret = Z_OK;
+			}
+			/* couldn't recover from Z_BUF_ERROR */
+			if (ret != Z_OK)
+				goto die;
+			break;
+		default:
+			/* stream was completely uncompressed. flush buffers */
+			if (buffer_set_datalength(
+				    buffer_out,
+				    infstream.next_out -
+					    (Bytef *)buffer_get_bufptr(
+						    buffer_out)))
+				goto die;
+
+			if (buffer_write(buffer_out))
+				goto die;
+
+			break;
 		}
-		if (infstream.avail_in == 0) {
-		}
-	}
+	} while (ret == Z_OK);
 
 	inflateEnd(&infstream);
 
@@ -186,7 +244,17 @@ int uncompress_and_save(buf_t *buffer_in, const char *path)
 	printf("saved ./%s \n", path);
 	fflush(stdout);
 
-	buffer_free(&buffer_out);
+	buffer_free(buffer_out);
+
+	return 0;
+die:
+	fprintf(stderr, "error in processing %s. \n", path);
+	fflush(stderr);
+
+	inflateEnd(&infstream);
+	buffer_free(buffer_out);
+
+	return -1;
 }
 
 int main(int argc, char **argv)
@@ -197,7 +265,7 @@ int main(int argc, char **argv)
 	const char *filename;
 	char dataname[NAME_MAX];
 
-	buf_t buffer;
+	buffer_t buffer = buffer_init();
 	size_t orig_size;
 
 	if (argc <= 1) {
@@ -211,8 +279,6 @@ int main(int argc, char **argv)
 	fflush(stdout);
 #endif
 
-	buffer_init(&buffer);
-
 	/* Every parameter specifies a file name */
 	for (i = 1; i < argc; i++) {
 		filename = argv[i];
@@ -222,7 +288,7 @@ int main(int argc, char **argv)
 		fflush(stdout);
 #endif
 
-		if (buffer_open(&buffer, filename, O_RDONLY)) {
+		if (buffer_open(buffer, filename, O_RDONLY)) {
 			fprintf(stderr, "error: opening %s: ", filename);
 			fputs(strerror(errno), stderr);
 			fputc('\n', stderr);
@@ -231,7 +297,7 @@ int main(int argc, char **argv)
 			continue;
 		}
 
-		if (buffer_read(&buffer)) {
+		if (buffer_read(buffer)) {
 			fprintf(stderr, "error: reading %s: ", filename);
 			fputs(strerror(errno), stderr);
 			fputc('\n', stderr);
@@ -243,11 +309,11 @@ int main(int argc, char **argv)
 #ifdef DEBUG
 		printf("DEBUG: Checking %s for PDF signature\n", filename);
 		printf("DEBUG: File signature looks like: \"%.8s\"\n",
-		       buffer.ptr);
+		       buffer_get_bufptr(buffer));
 		fflush(stdout);
 #endif
 
-		if (!is_pdf(&buffer)) {
+		if (!is_pdf(buffer)) {
 			fprintf(stderr, "error: validating %s: ", filename);
 			fputs("The file doesn't contain a valid PDF signature.\n",
 			      stderr);
@@ -259,14 +325,14 @@ int main(int argc, char **argv)
 		// TODO: Do this until there are no more streams.
 		stream = 0;
 		errno = 0;
-		while ((ret = get_stream(&buffer)) == 0) {
+		while ((ret = get_stream(buffer)) > 0) {
 			/* create filename for data */
 			sprintf(stpcpy(stpcpy(dataname, basename(filename)),
 				       ".data"),
 				".%d", stream);
 
 			// TODO: this thing
-			uncompress_and_save(buffer.ptr, buffer.size, dataname);
+			uncompress_and_save(buffer, dataname);
 
 			stream++;
 		}
@@ -285,12 +351,13 @@ int main(int argc, char **argv)
 		fflush(stdout);
 #endif
 
-		buffer_close(&buffer);
+		buffer_close(buffer);
 	}
 
 #ifdef DEBUG
 	printf("DEBUG: Cleanup.\n");
 	fflush(stdout);
 #endif
+	buffer_free(buffer);
 	return error;
 }
