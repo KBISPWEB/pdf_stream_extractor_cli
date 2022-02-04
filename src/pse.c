@@ -150,7 +150,14 @@ int uncompress_and_save(buffer_t buffer_in, const char *path)
 
 	buffer_t buffer_out = buffer_init();
 
-	buffer_open(buffer_out, path, O_WRONLY);
+	if (buffer_open(buffer_out, path, O_WRONLY | O_CREAT | O_TRUNC)) {
+		fprintf(stderr, "call to buffer_open failed!\n");
+		fputs(strerror(errno), stderr);
+		fputc('\n', stderr);
+		fflush(stderr);
+		buffer_free(buffer_out);
+		return -1;
+	}
 
 	/* input char buffer */
 	infstream.next_in = (Bytef *)buffer_get_bufptr(buffer_in);
@@ -162,11 +169,18 @@ int uncompress_and_save(buffer_t buffer_in, const char *path)
 	infstream.avail_out = (uInt)buffer_get_bufsize(buffer_out);
 
 #ifdef DEBUG
+	printf("DEBUG: infstream parameters: {\n\tnext_in: %lx\n\tavail_in: %ld\n\tnext_out: %lx\n\tavail_out: %ld\n}\n",
+	       infstream.next_in, infstream.avail_in, infstream.next_out,
+	       infstream.avail_out);
+	fflush(stdout);
+#endif
+
+#ifdef DEBUG
 	printf("DEBUG: uncompressing stream data\n", path);
 	fflush(stdout);
 #endif
 
-	inflateInit(&infstream);
+	inflateInit2(&infstream, -15);
 
 	// TODO: uncompress raw data using zlib
 	do {
@@ -248,7 +262,11 @@ int uncompress_and_save(buffer_t buffer_in, const char *path)
 
 	return 0;
 die:
-	fprintf(stderr, "error in processing %s. \n", path);
+	fprintf(stderr, "error in processing %s. (%d)", path, ret);
+	if (ret == -3) {
+		fprintf(stderr, ": %s", infstream.msg);
+	}
+	fputc('\n', stderr);
 	fflush(stderr);
 
 	inflateEnd(&infstream);

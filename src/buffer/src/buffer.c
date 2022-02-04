@@ -156,6 +156,11 @@ off_t buffer_get_filesize(buffer_t buffer)
  */
 off_t buffer_seek(buffer_t buffer, off_t offset, int whence)
 {
+	if (whence == SEEK_CUR) {
+		offset = buffer->offset + offset;
+		whence = SEEK_SET;
+	}
+
 #if defined(OS_LINUX)
 	if ((offset = lseek(buffer->filedes, offset, whence)) == -1)
 		return -1;
@@ -195,10 +200,10 @@ int buffer_read(buffer_t buffer)
 {
 	ssize_t bytes_read;
 
+	if (buffer_seek(buffer, 0, SEEK_CUR) == -1)
+		return -1;
+
 #if defined(OS_LINUX)
-
-	buffer->offset = buffer_seek(buffer, 0, SEEK_CUR);
-
 	if ((bytes_read = read(buffer->filedes, buffer->buf.ptr,
 			       buffer->buf.size)) == -1)
 		return -1;
@@ -235,6 +240,9 @@ int buffer_write(buffer_t buffer)
 {
 	// TODO: WRITE, DON'T READ.
 	ssize_t bytes_wrote;
+
+	if (buffer_seek(buffer, 0, SEEK_CUR) == -1)
+		return -1;
 
 #if defined(OS_LINUX)
 	if ((bytes_wrote = write(buffer->filedes, buffer->buf.ptr,
