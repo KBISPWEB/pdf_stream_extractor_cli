@@ -2,11 +2,9 @@
 #include <config.h>
 
 #include <stdlib.h>
-
-#include <ctype.h> /* isgraph */
 #include <libgen.h> /* basename */
-#include <errno.h> /* errno */
 #include <string.h> /* string and memory stuff */
+#include <errno.h> /* errno */
 #include <zlib.h> /* zlib compression and uncompression */
 
 #ifdef OS_WINDOWS
@@ -23,7 +21,8 @@
 #endif
 
 #include <filext.h> /* my file extension library */
-#include <buffer.h> /* my buffer library */
+
+#include "stream_scanner.h"
 
 filext_table_t filext_records = FILEXT_TABLE(FILEXT_RECORD(
 	FILEXT_SIGNATURE(0x30, 0x26, 0xb2, 0x75, 0x8e, 0x66, 0xcf),
@@ -44,100 +43,6 @@ int is_pdf(buffer_t buffer)
 	/* check file signature */
 	if (strncmp("%PDF-", buffer_get_bufptr(buffer), 5))
 		return 0;
-
-	return 1;
-}
-
-const void *memmem(const void *s1, const void *s2, size_t n, const size_t size)
-{
-	size_t offset = 0;
-	void *sp;
-
-	while (memcmp(s1 + offset, s2, n) != 0) {
-		if ((sp = memchr(s1 + offset + 1, *((char *)s2), n - 1)) !=
-		    NULL) {
-			offset = sp - s1;
-		} else {
-			offset += n;
-		}
-		if ((offset + n) > size)
-			return NULL;
-	}
-
-	return s1 + offset;
-}
-
-/* returns 1 if found, 0 if not found, and -1 on failure */
-int goto_str(buffer_t buffer, const char *substr, size_t size)
-{
-	off_t offset = buffer_get_filepos(buffer);
-	off_t filesize = buffer_get_filesize(buffer);
-	void *bufptr = buffer_get_bufptr(buffer);
-	size_t bufsize = buffer_get_bufsize(buffer);
-
-	const void *sp;
-
-	/* don't even bother if there's no data */
-	if (offset > filesize)
-		return 0;
-
-	while ((sp = memmem(bufptr, substr, size, bufsize)) == NULL) {
-		/* advance as much as we can */
-		if ((offset = buffer_seek(buffer, bufsize - size, SEEK_CUR)) ==
-		    -1)
-			return -1;
-
-		/* went past EOF, so it's not in the current file. */
-		if (offset > filesize)
-			return 0;
-
-		if (buffer_read(buffer))
-			return -1;
-	}
-
-	/* found what we were looking for. advance up to it */
-	if ((offset = buffer_seek(buffer, sp - bufptr, SEEK_CUR)) == -1)
-		return -1;
-
-	if (buffer_read(buffer))
-		return -1;
-
-	return 1;
-}
-
-/* returns 1 if found, 0 if not found, and -1 on failure */
-int get_stream(buffer_t buffer)
-{
-	off_t start = 0;
-	int ret;
-
-	/* go to FlateDecode FIRST */
-	if ((ret = goto_str(buffer, "/Filter/FlateDecode", 19)) <= 0)
-		return ret;
-
-	/* go to stream start once we know we have a FlateDecode */
-	/* Assume the pdf file is in the correct format. */
-	if ((ret = goto_str(buffer, "stream\r\n", 8)) <= 0) {
-		if ((ret = goto_str(buffer, "stream\n", 7)) <= 0)
-			return ret;
-
-		/* currently at \"stream\". I want to get to the start of the data.*/
-		if (buffer_seek(buffer, 7, SEEK_CUR) == -1)
-			return -1;
-	} else {
-		if (buffer_seek(buffer, 8, SEEK_CUR) == -1)
-			return -1;
-	}
-
-	/* load data into buffer */
-	if (buffer_read(buffer))
-		return -1;
-
-#ifdef DEBUG
-	printf("DEBUG: found stream starting at position %ld\n",
-	       buffer_get_filepos(buffer));
-	fflush(stdout);
-#endif
 
 	return 1;
 }
@@ -277,6 +182,8 @@ die:
 	inflateEnd(&infstream);
 	buffer_free(buffer_out);
 
+	// TODO: delete file.
+
 	return -1;
 }
 
@@ -287,6 +194,8 @@ int main(int argc, char **argv)
 
 	const char *filename;
 	char dataname[NAME_MAX];
+
+	size_t objlen = 0;
 
 	buffer_t buffer = buffer_init();
 	size_t orig_size;
@@ -348,17 +257,41 @@ int main(int argc, char **argv)
 		// TODO: Do this until there are no more streams.
 		stream = 0;
 		errno = 0;
-		while ((ret = get_stream(buffer)) > 0) {
-			/* create filename for data */
-			sprintf(stpcpy(stpcpy(dataname, basename(filename)),
-				       ".data"),
-				".%d", stream);
+		while ((ret = get_stream(buffer, &objlen)) > 0) {
+			// TODO: make sure stream data is OK to uncompress.
+			if (strstr(buffer_get_bufptr(buffer),
+				   "/Filter/FlateDecode/") != NULL) {
+#ifdef DEBUG
+				printf("DEBUG: found stream starting at position %ld, obj length is:%ld\n",
+				       buffer_get_filepos(buffer), objlen);
+				fflush(stdout);
+#endif
+				if ((ret = buffer_find_mem(buffer, "stream\r\n",
+							   8, &objend, 1)) <=
+				    0) {
+					continue;
+				} else {
+					if (buffer_seek(buffer, objend + 8,
+							SEEK_SET) == -1)
+						continue;
 
-			// TODO: this thing
-			uncompress_and_save(buffer, dataname);
+					if (buffer_read(buffer))
+						continue;
+				}
 
-			stream++;
+				/* create filename for data */
+				sprintf(stpcpy(stpcpy(dataname,
+						      basename(filename)),
+					       ".data"),
+					".%d", stream);
+
+				// TODO: fix segfault.
+				uncompress_and_save(buffer, dataname);
+
+				stream++;
+			}
 		}
+
 		if (ret < 0) {
 			fprintf(stderr, "error: scanning %s: ", filename);
 			fputs(strerror(errno), stderr);
