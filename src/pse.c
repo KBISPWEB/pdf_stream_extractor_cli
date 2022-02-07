@@ -3,6 +3,7 @@
 
 #include <stdlib.h>
 
+#include <ctype.h> /* isgraph */
 #include <libgen.h> /* basename */
 #include <errno.h> /* errno */
 #include <string.h> /* string and memory stuff */
@@ -80,12 +81,6 @@ int goto_str(buffer_t buffer, const char *substr, size_t size)
 	if (offset > filesize)
 		return 0;
 
-#ifdef DEBUG
-	fprintf(stderr, "DEBUG: Searching for \"%s\" starting from %ld\n",
-		substr, offset);
-	fflush(stdout);
-#endif
-
 	while ((sp = memmem(bufptr, substr, size, bufsize)) == NULL) {
 		/* advance as much as we can */
 		if ((offset = buffer_seek(buffer, bufsize - size, SEEK_CUR)) ==
@@ -117,17 +112,22 @@ int get_stream(buffer_t buffer)
 	int ret;
 
 	/* go to FlateDecode FIRST */
-	if ((ret = goto_str(buffer, "FlateDecode", 11)) <= 0)
+	if ((ret = goto_str(buffer, "/Filter/FlateDecode", 19)) <= 0)
 		return ret;
 
 	/* go to stream start once we know we have a FlateDecode */
 	/* Assume the pdf file is in the correct format. */
-	if ((ret = goto_str(buffer, "stream", 6)) <= 0)
-		return ret;
+	if ((ret = goto_str(buffer, "stream\r\n", 8)) <= 0) {
+		if ((ret = goto_str(buffer, "stream\n", 7)) <= 0)
+			return ret;
 
-	/* currently at \"stream\". I want to get to the start of the data.*/
-	if (buffer_seek(buffer, 6, SEEK_CUR) == -1)
-		return -1;
+		/* currently at \"stream\". I want to get to the start of the data.*/
+		if (buffer_seek(buffer, 7, SEEK_CUR) == -1)
+			return -1;
+	} else {
+		if (buffer_seek(buffer, 8, SEEK_CUR) == -1)
+			return -1;
+	}
 
 	/* load data into buffer */
 	if (buffer_read(buffer))
@@ -159,6 +159,10 @@ int uncompress_and_save(buffer_t buffer_in, const char *path)
 		return -1;
 	}
 
+	infstream.zalloc = Z_NULL;
+	infstream.zfree = Z_NULL;
+	infstream.opaque = Z_NULL;
+
 	/* input char buffer */
 	infstream.next_in = (Bytef *)buffer_get_bufptr(buffer_in);
 	/* size of input buffer */
@@ -180,11 +184,12 @@ int uncompress_and_save(buffer_t buffer_in, const char *path)
 	fflush(stdout);
 #endif
 
-	inflateInit2(&infstream, -15);
+	if ((ret = inflateInit(&infstream)) < 0)
+		goto die;
 
 	// TODO: uncompress raw data using zlib
 	do {
-		if ((ret = inflate(&infstream, Z_NO_FLUSH)) < 0)
+		if ((ret = inflate(&infstream, Z_BLOCK)) < 0)
 			goto die;
 
 		/* can continue */

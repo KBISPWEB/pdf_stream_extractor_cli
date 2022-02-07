@@ -98,7 +98,7 @@ size_t buffer_get_datalength(buffer_t buffer)
 int buffer_open(buffer_t buffer, const char *path, int oflag)
 {
 #if defined(OS_LINUX)
-	if ((buffer->filedes = open(path, oflag)) == -1)
+	if ((buffer->filedes = open(path, oflag, S_IRUSR | S_IWUSR)) == -1)
 		return -1;
 #else
 	errno = ENOSYS;
