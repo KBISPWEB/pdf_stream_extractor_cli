@@ -4,10 +4,10 @@
 #include <stdlib.h>
 #include <string.h>
 
-#ifdef OS_LINUX
+//#ifdef OS_LINUX
 #include <sys/stat.h>
 #include <unistd.h>
-#endif
+//#endif
 
 /* defaults - you can override these when building this library */
 
@@ -44,6 +44,9 @@ buffer_t buffer_init()
 
 void buffer_free(buffer_t buffer)
 {
+	if (!buffer)
+		return;
+
 	if (buffer->filedes != -1)
 		buffer_close(buffer);
 
@@ -94,34 +97,19 @@ size_t buffer_get_datalength(buffer_t buffer)
 	return buffer->datalength;
 }
 
-#define O_ALL (O_RDONLY | O_RDWR | O_WRONLY)
-
 /**
  * open a file readonly (for rbuf functions)
  */
 int buffer_open(buffer_t buffer, const char *path, int oflag)
 {
-#if defined(OS_LINUX)
 	if ((buffer->filedes = open(path, oflag, S_IRUSR | S_IWUSR)) == -1)
 		return -1;
-#else
-	errno = ENOSYS;
-	return -1;
-#endif
 
 	if (buffer_resize(buffer, buffer->buf.size))
 		return -1;
 
 	/* ALWAYS initialize this memory */
 	memset(buffer->buf.ptr, 0, buffer->buf.size);
-
-	if ((oflag & O_ALL) == O_RDONLY)
-		buffer->read = 1;
-
-	if (buffer_rewind(buffer)) {
-		fprintf(stderr, "buffer_rewind: ");
-		return -1;
-	}
 
 	return 0;
 }
@@ -134,51 +122,20 @@ int buffer_close(buffer_t buffer)
 	free(buffer->buf.ptr);
 	buffer->buf.ptr = NULL;
 
-#if defined(OS_LINUX)
 	if (close(buffer->filedes))
 		return -1;
-#else
-	errno = ENOSYS;
-	return -1;
-#endif
 
 	buffer->filedes = -1;
 }
 
 off_t buffer_get_filesize(buffer_t buffer)
 {
-#if defined(OS_LINUX)
 	struct stat buf;
 
 	if (fstat(buffer->filedes, &buf))
 		return -1;
 
 	return buf.st_size;
-#else
-	errno = ENOSYS;
-	return -1;
-#endif
-}
-
-int internal_buffer_read(buffer_t buffer)
-{
-	ssize_t bytes_read;
-
-	/* fill all of the buffer with zeroes */
-	memset(buffer->buf.ptr, 0, buffer->buf.size);
-
-#if defined(OS_LINUX)
-	if ((bytes_read = read(buffer->filedes, buffer->buf.ptr,
-			       buffer->buf.size)) == -1)
-		return -1;
-#else
-	errno = ENOSYS;
-	return -1;
-#endif
-
-	buffer->datalength = bytes_read;
-
-	return 0;
 }
 
 /**
@@ -191,21 +148,10 @@ off_t buffer_seek(buffer_t buffer, off_t offset, int whence)
 		whence = SEEK_SET;
 	}
 
-#if defined(OS_LINUX)
 	if ((offset = lseek(buffer->filedes, offset, whence)) == -1)
 		return -1;
-#else
-	errno = ENOSYS;
-	return -1;
-#endif
 
 	buffer->offset = offset;
-
-	if (buffer->read)
-		if (internal_buffer_read(buffer)) {
-			fprintf(stderr, "internal_buffer_read: ");
-			return -1;
-		}
 
 	return offset;
 }
@@ -215,7 +161,7 @@ off_t buffer_seek(buffer_t buffer, off_t offset, int whence)
  */
 off_t buffer_rewind(buffer_t buffer)
 {
-	if (buffer_seek(buffer, 0, SEEK_SET)) {
+	if (buffer_seek(buffer, 0, SEEK_SET) < 0) {
 		fprintf(stderr, "buffer_seek: ");
 		return -1;
 	}
@@ -236,12 +182,21 @@ off_t buffer_get_filepos(buffer_t buffer)
  */
 int buffer_read(buffer_t buffer)
 {
-	if (buffer->read)
-		return (buffer_seek(buffer, buffer->buf.size, SEEK_CUR) == -1) ?
-			       -1 :
-				     0;
+	ssize_t bytes_read;
 
-	return internal_buffer_read(buffer);
+	if (buffer_seek(buffer, buffer->datalength, SEEK_CUR) < 0) {
+		fprintf(stderr, "buffer_seek: ");
+		return -1;
+	}
+
+	/* fill all of the buffer with zeroes */
+	memset(buffer->buf.ptr, 0, buffer->buf.size);
+
+	if ((bytes_read = read(buffer->filedes, buffer->buf.ptr,
+			       buffer->buf.size)) == -1)
+		return -1;
+
+	return (buffer->datalength = bytes_read);
 }
 
 /**
@@ -249,7 +204,8 @@ int buffer_read(buffer_t buffer)
  */
 int buffer_reload(buffer_t buffer)
 {
-	return (buffer_seek(buffer, 0, SEEK_CUR) == -1) ? -1 : 0;
+	buffer->datalength = 0;
+	return buffer_read(buffer);
 }
 
 /**
@@ -264,14 +220,10 @@ int buffer_write(buffer_t buffer)
 	if (buffer_seek(buffer, 0, SEEK_CUR) == -1)
 		return -1;
 
-#if defined(OS_LINUX)
 	if ((bytes_wrote = write(buffer->filedes, buffer->buf.ptr,
 				 buffer->datalength)) == -1)
 		return -1;
-#else
-	errno = ENOSYS;
-	return -1;
-#endif
+
 	/* move remaining data to the front of the buffer, if any */
 	if (bytes_wrote < buffer->datalength)
 		memmove(buffer->buf.ptr, buffer->buf.ptr + bytes_wrote,

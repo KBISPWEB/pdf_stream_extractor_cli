@@ -43,7 +43,7 @@ int buffer_find_mem(buffer_t buffer, const char *substr, const size_t size,
 	if (*offset > filesize)
 		return 0;
 
-	if (buffer_reload(buffer)) {
+	if (buffer_reload(buffer) <= 0) {
 		fprintf(stderr, "error: buffer_find_mem: buffer_reload\n");
 		return -1;
 	}
@@ -52,6 +52,12 @@ int buffer_find_mem(buffer_t buffer, const char *substr, const size_t size,
 		/* advance as much as we can */
 		if ((*offset = buffer_seek(buffer, bufsize - size, SEEK_CUR)) ==
 		    -1) {
+			reset = 1;
+			ret = -1;
+			goto die;
+		}
+
+		if (buffer_read(buffer) <= 0) {
 			reset = 1;
 			ret = -1;
 			goto die;
@@ -76,6 +82,9 @@ die:
 		if (buffer_seek(buffer, *offset, SEEK_SET) == -1)
 			return -1;
 	}
+
+	if (buffer_read(buffer) <= 0)
+		return -1;
 
 	return ret;
 }
@@ -105,33 +114,6 @@ int get_obj(buffer_t buffer, size_t *objlen)
 	// TODO: fix segfault.
 	if (*objlen < buffer_get_bufsize(buffer))
 		*((char *)buffer_get_bufptr(buffer) + *objlen) = 0;
-
-	//	/* ...and get the start of the stream data */
-	//
-	//	if (buffer_seek(buffer, objend + 6, SEEK_SET) == -1)
-	//		return -1;
-	//
-	//	if (buffer_read(buffer))
-	//		return -1;
-	//
-	//	if ((ret = buffer_find_mem(buffer, "\r\n", 2, &objend, 0)) == 0) {
-	//		/* try unix line ending */
-	//		if ((ret = buffer_find_mem(buffer, "\n", 1, &objend, 0)) <= 0) {
-	//			return ret;
-	//		} else {
-	//			objend += 1;
-	//		}
-	//	} else if (ret == -1) {
-	//		return -1;
-	//	} else {
-	//		objend += 2;
-	//	}
-	//
-	//	if (buffer_seek(buffer, objend, SEEK_SET) == -1)
-	//		return -1;
-	//
-	//	if (buffer_read(buffer))
-	//		return -1;
 
 	return 1;
 }

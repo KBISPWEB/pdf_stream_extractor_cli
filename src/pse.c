@@ -7,18 +7,19 @@
 #include <errno.h> /* errno */
 #include <zlib.h> /* zlib compression and uncompression */
 
-#ifdef OS_WINDOWS
-/* no debugging in windows target right now, sorry! */
-#ifdef DEBUG
-#undef DEBUG
-#endif
-#include <fileapi.h> /* low level file stuff */
+//#ifdef OS_WINDOWS
+//#include <fileapi.h> /* low level file stuff */
+//#endif
+
+//#ifdef OS_LINUX
+#include <limits.h> /* filename limit */
+
+#ifndef NAME_MAX
+#define NAME_MAX PATH_MAX
 #endif
 
-#ifdef OS_LINUX
-#include <limits.h> /* filename limit */
 #include <unistd.h> /* low level file stuff */
-#endif
+//#endif
 
 #include <filext.h> /* my file extension library */
 
@@ -87,10 +88,10 @@ int uncompress_and_save(buffer_t buffer_in, char *path)
 	infstream.avail_out = (uInt)buffer_get_bufsize(buffer_out);
 
 #ifdef DEBUG
-	//printf("DEBUG: infstream parameters: {\n\tnext_in: %lx\n\tavail_in: %ld\n\tnext_out: %lx\n\tavail_out: %ld\n}\n",
-	//       infstream.next_in, infstream.avail_in, infstream.next_out,
-	//       infstream.avail_out);
-	//fflush(stdout);
+	printf("DEBUG: infstream parameters: {\n\tnext_in: %lx\n\tavail_in: %ld\n\tnext_out: %lx\n\tavail_out: %ld\n}\n",
+	       infstream.next_in, infstream.avail_in, infstream.next_out,
+	       infstream.avail_out);
+	fflush(stdout);
 #endif
 
 #ifdef DEBUG
@@ -101,20 +102,26 @@ int uncompress_and_save(buffer_t buffer_in, char *path)
 	if ((ret = inflateInit(&infstream)) < 0)
 		goto die;
 
-	// TODO: uncompress raw data using zlib
 	do {
-		if ((ret = inflate(&infstream, Z_BLOCK)) < 0)
+		if ((ret = inflate(&infstream, Z_BLOCK)) < 0) {
+			fputs("X\n", stdout);
+			fprintf(stderr, "error in processing %s. (%d)", path,
+				ret);
+			if (ret == -3) {
+				fprintf(stderr, ": %s", infstream.msg);
+			}
+			fputc('\n', stderr);
+			fflush(stderr);
 			goto die;
+		}
 
 		/* can continue */
-
 		switch (ret) {
 		case Z_BUF_ERROR:
 			/* no progress was made */
 			__attribute__((fallthrough));
 		case Z_OK:
 			/* progress was made */
-			// TODO: save uncompressed data
 			/* save data, clear output buffer */
 			if (infstream.avail_out == 0) {
 				/* update next_out and avail_out */
@@ -122,11 +129,20 @@ int uncompress_and_save(buffer_t buffer_in, char *path)
 					    buffer_out,
 					    infstream.next_out -
 						    (Bytef *)buffer_get_bufptr(
-							    buffer_out)))
+							    buffer_out))) {
+					fputs("buffer_set_datalength: ",
+					      stderr);
+					fputs(strerror(errno), stderr);
+					fputc('\n', stderr);
 					goto die;
+				}
 
-				if (buffer_write(buffer_out))
+				if (buffer_write(buffer_out)) {
+					fputs("buffer_write: ", stderr);
+					fputs(strerror(errno), stderr);
+					fputc('\n', stderr);
 					goto die;
+				}
 
 				infstream.next_out =
 					(Bytef *)buffer_get_bufptr(buffer_out) +
@@ -137,9 +153,18 @@ int uncompress_and_save(buffer_t buffer_in, char *path)
 				ret = Z_OK;
 			}
 			if (infstream.avail_in == 0) {
+#ifdef DEBUG
+				printf("DEBUG: refreshing avail_in\n");
+				fflush(stdout);
+#endif
+
 				/* update next_in and avail_in */
-				if (buffer_read(buffer_in))
+				if (buffer_read(buffer_in) <= 0) {
+					fputs("buffer_read: ", stderr);
+					fputs(strerror(errno), stderr);
+					fputc('\n', stderr);
 					goto die;
+				}
 
 				infstream.next_in =
 					(Bytef *)buffer_get_bufptr(buffer_in);
@@ -149,8 +174,18 @@ int uncompress_and_save(buffer_t buffer_in, char *path)
 				ret = Z_OK;
 			}
 			/* couldn't recover from Z_BUF_ERROR */
-			if (ret != Z_OK)
+			if (ret != Z_OK) {
+				fputs("X\n", stdout);
+				fprintf(stderr, "error in processing %s. (%d)",
+					path, ret);
+				if (ret == -3) {
+					fprintf(stderr, ": %s", infstream.msg);
+				}
+				fputc('\n', stderr);
+				fflush(stderr);
 				goto die;
+			}
+
 			break;
 		default:
 			/* stream was completely uncompressed. flush buffers */
@@ -158,24 +193,49 @@ int uncompress_and_save(buffer_t buffer_in, char *path)
 				    buffer_out,
 				    infstream.next_out -
 					    (Bytef *)buffer_get_bufptr(
-						    buffer_out)))
+						    buffer_out))) {
+				fputs("buffer_set_datalength: ", stderr);
+				fputs(strerror(errno), stderr);
+				fputc('\n', stderr);
 				goto die;
+			}
 
-			if (buffer_write(buffer_out))
+			if (buffer_write(buffer_out)) {
+				fputs("buffer_write: ", stderr);
+				fputs(strerror(errno), stderr);
+				fputc('\n', stderr);
 				goto die;
+			}
+
+			if (buffer_rewind(buffer_out)) {
+				fputs("buffer_rewind: ", stderr);
+				fputs(strerror(errno), stderr);
+				fputc('\n', stderr);
+				goto die;
+			}
+
+			if (buffer_read(buffer_in) <= 0) {
+				fputs("buffer_read: ", stderr);
+				fputs(strerror(errno), stderr);
+				fputc('\n', stderr);
+				goto die;
+			}
 
 			break;
 		}
+		fputc('.', stdout);
+
+#ifdef DEBUG
+		printf("DEBUG: infstream parameters: {\n\tnext_in: %lx\n\tavail_in: %ld\n\tnext_out: %lx\n\tavail_out: %ld\n}\n",
+		       infstream.next_in, infstream.avail_in,
+		       infstream.next_out, infstream.avail_out);
+		fflush(stdout);
+#endif
+
 	} while (ret == Z_OK);
 
 	inflateEnd(&infstream);
-
-	// TODO: determine filetype from uncompressed data
-	if (buffer_rewind(buffer_out))
-		goto die;
-
-	if (buffer_read(buffer_out))
-		goto die;
+	fputs("OK\n", stdout);
 
 	newpath = malloc(strlen(path) + 5);
 	strcpy(newpath, path);
@@ -191,17 +251,14 @@ int uncompress_and_save(buffer_t buffer_in, char *path)
 	buffer_free(buffer_out);
 	buffer_out = NULL;
 
-	// TODO: rename uncompressed data.
-
-#ifdef OS_LINUX
 	if (rename(path, newpath)) {
+		fputs("rename: ", stderr);
+		fputs(strerror(errno), stderr);
+		fputc('\n', stderr);
+		fflush(stderr);
 		free(newpath);
 		goto die;
 	}
-#else
-	errno = ENOSYS;
-	return -1;
-#endif
 
 	printf("saved ./%s \n", newpath);
 	fflush(stdout);
@@ -210,21 +267,13 @@ int uncompress_and_save(buffer_t buffer_in, char *path)
 
 	return 0;
 die:
-	fprintf(stderr, "error in processing %s. (%d)", path, ret);
-	if (ret == -3) {
-		fprintf(stderr, ": %s", infstream.msg);
-	}
-	fputc('\n', stderr);
-	fflush(stderr);
 
 	inflateEnd(&infstream);
 
-#ifdef OS_LINUX
+	buffer_free(buffer_out);
+	buffer_out = NULL;
+
 	unlink(path);
-#else
-	errno = ENOSYS;
-	return -1;
-#endif
 
 	return -1;
 }
@@ -290,6 +339,24 @@ int main(int argc, char *argv[])
 			continue;
 		}
 
+		if (buffer_rewind(buffer)) {
+			fprintf(stderr, "buffer_rewind: ");
+			fputs(strerror(errno), stderr);
+			fputc('\n', stderr);
+			fflush(stderr);
+			error++;
+			continue;
+		}
+
+		if (buffer_read(buffer) <= 0) {
+			fprintf(stderr, "buffer_read: ");
+			fputs(strerror(errno), stderr);
+			fputc('\n', stderr);
+			fflush(stderr);
+			error++;
+			continue;
+		}
+
 #ifdef DEBUG
 		printf("DEBUG: Checking %s for PDF signature\n", filename);
 		printf("DEBUG: File signature looks like: \"%.8s\"\n",
@@ -334,18 +401,35 @@ int main(int argc, char *argv[])
 								streamstart + 7,
 								SEEK_SET) == -1)
 							continue;
+
+						if (buffer_read(buffer) <= 0) {
+							fprintf(stderr,
+								"buffer_read: ");
+							fputs(strerror(errno),
+							      stderr);
+							fputc('\n', stderr);
+							fflush(stderr);
+							continue;
+						}
 					}
 				} else {
 					if (buffer_seek(buffer, streamstart + 8,
 							SEEK_SET) == -1)
 						continue;
+
+					if (buffer_read(buffer) <= 0) {
+						fprintf(stderr,
+							"buffer_read: ");
+						fputs(strerror(errno), stderr);
+						fputc('\n', stderr);
+						fflush(stderr);
+						continue;
+					}
 				}
 
 				/* create filename for data */
-				sprintf(stpcpy(stpcpy(dataname,
-						      basename(filename)),
-					       ".data"),
-					".%d", stream);
+				sprintf(dataname, "%s.data.%d",
+					basename(filename), stream);
 
 				uncompress_and_save(buffer, dataname);
 

@@ -8,15 +8,11 @@ AS_CASE(["$host_os"],
     OS_VERSION=linux
     AC_DEFINE([OS_LINUX], [],
       [Defined if the target OS is Linux])
-    AC_CHECK_HEADERS([unistd.h])
   ],
   [*mingw*|*cygwin*], [
     OS_VERSION=windows
     AC_DEFINE([OS_WINDOWS], [],
       [Defined if the target OS is Windows])
-    AC_CHECK_HEADERS([fileapi.h], [], [
-      AC_MSG_ERROR([fileapi.h not found but is required for $host_os. Is your build host set correctly?])
-    ], [])
   ],
   [AC_MSG_WARN([unsupported system: $host_os])]
 )
@@ -39,7 +35,7 @@ AC_C_RESTRICT
 # none
 
 #headers
-# none
+AC_CHECK_HEADERS([unistd.h])
 
 #types
 AC_TYPE_SIZE_T
@@ -47,6 +43,8 @@ AC_TYPE_UINT8_T
 AC_TYPE_OFF_T
 
 #functions
+AC_FUNC_MALLOC
+AC_CHECK_FUNCS([atexit])
 AC_CHECK_FUNCS([stpcpy])
 AC_CHECK_FUNCS([strerror])
 AC_CHECK_FUNCS([strstr])

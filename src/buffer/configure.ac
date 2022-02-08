@@ -8,9 +8,6 @@ AS_CASE(["$host_os"],
     OS_VERSION=linux
 
     AC_DEFINE([OS_LINUX], [], [Defined if the target OS is Linux])
-
-    AC_CHECK_HEADERS([fcntl.h])
-    AC_CHECK_HEADERS([unistd.h])
   ],
   [*mingw*|*cygwin*], [
     OS_VERSION=windows
@@ -35,7 +32,8 @@ AC_PROG_RANLIB
 # none
 
 #headers
-# none
+AC_CHECK_HEADERS([fcntl.h])
+AC_CHECK_HEADERS([unistd.h])
 
 #types
 AC_TYPE_SIZE_T

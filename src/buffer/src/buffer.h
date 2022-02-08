@@ -2,10 +2,8 @@
 
 #include <stdio.h>
 
-#ifdef OS_LINUX
 /* O_RDONLY, O_WRONLY, O_RDWR, etc. */
 #include <fcntl.h>
-#endif
 
 #ifndef BUFFER_H
 #define BUFFER_H
