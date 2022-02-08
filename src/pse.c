@@ -47,20 +47,29 @@ int is_pdf(buffer_t buffer)
 	return 1;
 }
 
-int uncompress_and_save(buffer_t buffer_in, const char *path)
+buffer_t buffer_out = NULL;
+
+int uncompress_and_save(buffer_t buffer_in, char *path)
 {
 	int ret;
 
 	z_stream infstream = { 0 }; /* zero-init so pointers are null */
 
-	buffer_t buffer_out = buffer_init();
+	char *ext;
+	char *newpath;
 
-	if (buffer_open(buffer_out, path, O_WRONLY | O_CREAT | O_TRUNC)) {
-		fprintf(stderr, "call to buffer_open failed!\n");
+	buffer_out = buffer_init();
+
+#ifdef DEBUG
+	printf("DEBUG: opening \"%s\"\n", path);
+	fflush(stdout);
+#endif
+
+	if (buffer_open(buffer_out, path, O_RDWR | O_CREAT | O_TRUNC)) {
+		fprintf(stderr, "buffer_open: opening \"%s\" failed: ", path);
 		fputs(strerror(errno), stderr);
 		fputc('\n', stderr);
 		fflush(stderr);
-		buffer_free(buffer_out);
 		return -1;
 	}
 
@@ -78,10 +87,10 @@ int uncompress_and_save(buffer_t buffer_in, const char *path)
 	infstream.avail_out = (uInt)buffer_get_bufsize(buffer_out);
 
 #ifdef DEBUG
-	printf("DEBUG: infstream parameters: {\n\tnext_in: %lx\n\tavail_in: %ld\n\tnext_out: %lx\n\tavail_out: %ld\n}\n",
-	       infstream.next_in, infstream.avail_in, infstream.next_out,
-	       infstream.avail_out);
-	fflush(stdout);
+	//printf("DEBUG: infstream parameters: {\n\tnext_in: %lx\n\tavail_in: %ld\n\tnext_out: %lx\n\tavail_out: %ld\n}\n",
+	//       infstream.next_in, infstream.avail_in, infstream.next_out,
+	//       infstream.avail_out);
+	//fflush(stdout);
 #endif
 
 #ifdef DEBUG
@@ -162,13 +171,42 @@ int uncompress_and_save(buffer_t buffer_in, const char *path)
 	inflateEnd(&infstream);
 
 	// TODO: determine filetype from uncompressed data
+	if (buffer_rewind(buffer_out))
+		goto die;
 
-	// TODO: rename uncompressed data if path changed.
+	if (buffer_read(buffer_out))
+		goto die;
 
-	printf("saved ./%s \n", path);
-	fflush(stdout);
+	newpath = malloc(strlen(path) + 5);
+	strcpy(newpath, path);
+
+	if (ext = get_file_filext(buffer_get_bufptr(buffer_out),
+				  buffer_get_bufsize(buffer_out))) {
+		strcat(newpath, ".");
+		strcat(newpath, ext);
+	} else {
+		strcat(newpath, ".dat");
+	}
 
 	buffer_free(buffer_out);
+	buffer_out = NULL;
+
+	// TODO: rename uncompressed data.
+
+#ifdef OS_LINUX
+	if (rename(path, newpath)) {
+		free(newpath);
+		goto die;
+	}
+#else
+	errno = ENOSYS;
+	return -1;
+#endif
+
+	printf("saved ./%s \n", newpath);
+	fflush(stdout);
+
+	free(newpath);
 
 	return 0;
 die:
@@ -180,25 +218,48 @@ die:
 	fflush(stderr);
 
 	inflateEnd(&infstream);
-	buffer_free(buffer_out);
 
-	// TODO: delete file.
+#ifdef OS_LINUX
+	unlink(path);
+#else
+	errno = ENOSYS;
+	return -1;
+#endif
 
 	return -1;
 }
 
-int main(int argc, char **argv)
+buffer_t buffer = NULL;
+
+void cleanup(void)
+{
+	if (buffer)
+		buffer_free(buffer);
+
+	if (buffer_out)
+		buffer_free(buffer_out);
+}
+
+int main(int argc, char *argv[])
 {
 	int ret = 0, error = 0;
 	int i, stream;
 
-	const char *filename;
+	char *filename = NULL;
 	char dataname[NAME_MAX];
 
 	size_t objlen = 0;
+	off_t streamstart = 0;
+	off_t objend = 0;
 
-	buffer_t buffer = buffer_init();
 	size_t orig_size;
+
+	if (atexit(cleanup)) {
+		fputs("The function could not be registered.\n", stderr);
+		return 1;
+	}
+
+	buffer = buffer_init();
 
 	if (argc <= 1) {
 		fputs("You must specify a PDF file from which to extract stream data.\n",
@@ -229,15 +290,6 @@ int main(int argc, char **argv)
 			continue;
 		}
 
-		if (buffer_read(buffer)) {
-			fprintf(stderr, "error: reading %s: ", filename);
-			fputs(strerror(errno), stderr);
-			fputc('\n', stderr);
-			fflush(stderr);
-			error++;
-			continue;
-		}
-
 #ifdef DEBUG
 		printf("DEBUG: Checking %s for PDF signature\n", filename);
 		printf("DEBUG: File signature looks like: \"%.8s\"\n",
@@ -257,7 +309,7 @@ int main(int argc, char **argv)
 		// TODO: Do this until there are no more streams.
 		stream = 0;
 		errno = 0;
-		while ((ret = get_stream(buffer, &objlen)) > 0) {
+		while ((ret = get_obj(buffer, &objlen)) > 0) {
 			// TODO: make sure stream data is OK to uncompress.
 			if (strstr(buffer_get_bufptr(buffer),
 				   "/Filter/FlateDecode/") != NULL) {
@@ -266,16 +318,26 @@ int main(int argc, char **argv)
 				       buffer_get_filepos(buffer), objlen);
 				fflush(stdout);
 #endif
-				if ((ret = buffer_find_mem(buffer, "stream\r\n",
-							   8, &objend, 1)) <=
-				    0) {
-					continue;
-				} else {
-					if (buffer_seek(buffer, objend + 8,
-							SEEK_SET) == -1)
-						continue;
+				objend = buffer_get_filepos(buffer) + objlen;
 
-					if (buffer_read(buffer))
+				if ((ret = buffer_find_mem(buffer, "stream\r\n",
+							   7, &streamstart,
+							   1)) <= 0) {
+					if ((ret = buffer_find_mem(
+						     buffer, "stream\n", 7,
+						     &streamstart, 1)) <= 0) {
+						fputs("searching for stream start failed!\n",
+						      stderr);
+						continue;
+					} else {
+						if (buffer_seek(buffer,
+								streamstart + 7,
+								SEEK_SET) == -1)
+							continue;
+					}
+				} else {
+					if (buffer_seek(buffer, streamstart + 8,
+							SEEK_SET) == -1)
 						continue;
 				}
 
@@ -285,10 +347,16 @@ int main(int argc, char **argv)
 					       ".data"),
 					".%d", stream);
 
-				// TODO: fix segfault.
 				uncompress_and_save(buffer, dataname);
 
 				stream++;
+
+				if (buffer_seek(buffer,
+						objend + sizeof("objend"),
+						SEEK_SET) == -1) {
+					ret = -1;
+					break;
+				}
 			}
 		}
 
@@ -314,6 +382,5 @@ int main(int argc, char **argv)
 	printf("DEBUG: Cleanup.\n");
 	fflush(stdout);
 #endif
-	buffer_free(buffer);
 	return error;
 }

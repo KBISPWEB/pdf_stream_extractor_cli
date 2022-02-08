@@ -43,6 +43,11 @@ int buffer_find_mem(buffer_t buffer, const char *substr, const size_t size,
 	if (*offset > filesize)
 		return 0;
 
+	if (buffer_reload(buffer)) {
+		fprintf(stderr, "error: buffer_find_mem: buffer_reload\n");
+		return -1;
+	}
+
 	while ((sp = memmem(bufptr, substr, size, bufsize)) == NULL) {
 		/* advance as much as we can */
 		if ((*offset = buffer_seek(buffer, bufsize - size, SEEK_CUR)) ==
@@ -56,13 +61,6 @@ int buffer_find_mem(buffer_t buffer, const char *substr, const size_t size,
 		if (*offset > filesize) {
 			reset = 1;
 			ret = 0;
-			goto die;
-		}
-
-		/* no need to read data into the buffer if we're past EOF */
-		if (buffer_read(buffer)) {
-			reset = 1;
-			ret = -1;
 			goto die;
 		}
 	}
@@ -79,14 +77,11 @@ die:
 			return -1;
 	}
 
-	if (buffer_read(buffer))
-		return -1;
-
 	return ret;
 }
 
 /* 1 on OK, 0 on not found, -1 on failure */
-int get_stream(buffer_t buffer, size_t *objlen)
+int get_obj(buffer_t buffer, size_t *objlen)
 {
 	off_t objstart = 0, objend = 0;
 	int ret;
@@ -107,7 +102,9 @@ int get_stream(buffer_t buffer, size_t *objlen)
 
 	*objlen = (objend - objstart);
 
-	*((char *)buffer_get_bufptr(buffer) + *objlen) = 0;
+	// TODO: fix segfault.
+	if (*objlen < buffer_get_bufsize(buffer))
+		*((char *)buffer_get_bufptr(buffer) + *objlen) = 0;
 
 	//	/* ...and get the start of the stream data */
 	//

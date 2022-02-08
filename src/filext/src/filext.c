@@ -16,11 +16,12 @@ int filext_check_data_against_signature(uint8_t *data, filext_record_t *record)
 	for (i = 0; i < record->signature.size; i++) {
 		if ((*record->signature.data)[i] == EXT_BYTE_ANY)
 			continue;
-		if (data[i] != (char)((*record->signature.data)[i]))
-			return -1;
+
+		if (data[i] != (uint8_t)(*(record->signature.data))[i])
+			return 0;
 	}
 
-	return 0;
+	return 1;
 }
 
 char *filext_get_filext(filext_sample_t *sample)
