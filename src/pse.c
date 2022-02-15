@@ -5,25 +5,12 @@
 #include <libgen.h> /* basename */
 #include <string.h> /* string and memory stuff */
 #include <errno.h> /* errno */
+
 #include <zlib.h> /* zlib compression and uncompression */
-
-//#ifdef OS_WINDOWS
-//#include <fileapi.h> /* low level file stuff */
-//#endif
-
-//#ifdef OS_LINUX
-#include <limits.h> /* filename limit */
-
-#ifndef NAME_MAX
-#define NAME_MAX PATH_MAX
-#endif
-
-#include <unistd.h> /* low level file stuff */
-//#endif
 
 #include <filext.h> /* my file extension library */
 
-#include "stream_scanner.h"
+#include "stream_scanner.h" /* this includes the buffer library */
 
 filext_table_t filext_records = FILEXT_TABLE(FILEXT_RECORD(
 	FILEXT_SIGNATURE(0x30, 0x26, 0xb2, 0x75, 0x8e, 0x66, 0xcf),
@@ -157,10 +144,10 @@ int uncompress_and_save(buffer_t buffer_in, char *path)
 				printf("DEBUG: refreshing avail_in\n");
 				fflush(stdout);
 #endif
-
 				/* update next_in and avail_in */
-				if (buffer_read(buffer_in) <= 0) {
-					fputs("buffer_read: ", stderr);
+				if (buffer_seek(buffer_in,
+						buffer_get_datalength(buffer_in),
+						SEEK_CUR)) {
 					fputs(strerror(errno), stderr);
 					fputc('\n', stderr);
 					goto die;
@@ -209,13 +196,6 @@ int uncompress_and_save(buffer_t buffer_in, char *path)
 
 			if (buffer_rewind(buffer_out)) {
 				fputs("buffer_rewind: ", stderr);
-				fputs(strerror(errno), stderr);
-				fputc('\n', stderr);
-				goto die;
-			}
-
-			if (buffer_read(buffer_in) <= 0) {
-				fputs("buffer_read: ", stderr);
 				fputs(strerror(errno), stderr);
 				fputc('\n', stderr);
 				goto die;
@@ -295,7 +275,7 @@ int main(int argc, char *argv[])
 	int i, stream;
 
 	char *filename = NULL;
-	char dataname[NAME_MAX];
+	char dataname[256];
 
 	size_t objlen = 0;
 	off_t streamstart = 0;
@@ -317,7 +297,7 @@ int main(int argc, char *argv[])
 	}
 
 #ifdef DEBUG
-	printf("DEBUG: Initializing buffer defaults\n");
+	fputs("DEBUG: Initializing buffer defaults\n", stdout);
 	fflush(stdout);
 #endif
 
@@ -341,15 +321,6 @@ int main(int argc, char *argv[])
 
 		if (buffer_rewind(buffer)) {
 			fprintf(stderr, "buffer_rewind: ");
-			fputs(strerror(errno), stderr);
-			fputc('\n', stderr);
-			fflush(stderr);
-			error++;
-			continue;
-		}
-
-		if (buffer_read(buffer) <= 0) {
-			fprintf(stderr, "buffer_read: ");
 			fputs(strerror(errno), stderr);
 			fputc('\n', stderr);
 			fflush(stderr);
@@ -382,10 +353,10 @@ int main(int argc, char *argv[])
 				   "/Filter/FlateDecode/") != NULL) {
 #ifdef DEBUG
 				printf("DEBUG: found stream starting at position %ld, obj length is:%ld\n",
-				       buffer_get_filepos(buffer), objlen);
+				       buffer_get_offset(buffer), objlen);
 				fflush(stdout);
 #endif
-				objend = buffer_get_filepos(buffer) + objlen;
+				objend = buffer_get_offset(buffer) + objlen;
 
 				if ((ret = buffer_find_mem(buffer, "stream\r\n",
 							   7, &streamstart,
@@ -399,32 +370,13 @@ int main(int argc, char *argv[])
 					} else {
 						if (buffer_seek(buffer,
 								streamstart + 7,
-								SEEK_SET) == -1)
+								SEEK_SET))
 							continue;
-
-						if (buffer_read(buffer) <= 0) {
-							fprintf(stderr,
-								"buffer_read: ");
-							fputs(strerror(errno),
-							      stderr);
-							fputc('\n', stderr);
-							fflush(stderr);
-							continue;
-						}
 					}
 				} else {
 					if (buffer_seek(buffer, streamstart + 8,
-							SEEK_SET) == -1)
+							SEEK_SET))
 						continue;
-
-					if (buffer_read(buffer) <= 0) {
-						fprintf(stderr,
-							"buffer_read: ");
-						fputs(strerror(errno), stderr);
-						fputc('\n', stderr);
-						fflush(stderr);
-						continue;
-					}
 				}
 
 				/* create filename for data */
@@ -437,7 +389,7 @@ int main(int argc, char *argv[])
 
 				if (buffer_seek(buffer,
 						objend + sizeof("objend"),
-						SEEK_SET) == -1) {
+						SEEK_SET)) {
 					ret = -1;
 					break;
 				}

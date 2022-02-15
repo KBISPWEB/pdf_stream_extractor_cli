@@ -35,7 +35,7 @@ AC_C_RESTRICT
 # none
 
 #headers
-AC_CHECK_HEADERS([unistd.h])
+# none
 
 #types
 AC_TYPE_SIZE_T
@@ -45,7 +45,6 @@ AC_TYPE_OFF_T
 #functions
 AC_FUNC_MALLOC
 AC_CHECK_FUNCS([atexit])
-AC_CHECK_FUNCS([stpcpy])
 AC_CHECK_FUNCS([strerror])
 AC_CHECK_FUNCS([strstr])
 AC_CHECK_FUNCS([memchr])

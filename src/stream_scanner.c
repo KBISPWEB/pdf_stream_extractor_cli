@@ -30,7 +30,7 @@ int buffer_find_mem(buffer_t buffer, const char *substr, const size_t size,
 {
 	const void *sp;
 
-	const off_t original_offset = buffer_get_filepos(buffer);
+	const off_t original_offset = buffer_get_offset(buffer);
 	const off_t filesize = buffer_get_filesize(buffer);
 	const void *bufptr = buffer_get_bufptr(buffer);
 	const size_t bufsize = buffer_get_bufsize(buffer);
@@ -43,25 +43,20 @@ int buffer_find_mem(buffer_t buffer, const char *substr, const size_t size,
 	if (*offset > filesize)
 		return 0;
 
-	if (buffer_reload(buffer) <= 0) {
+	if (buffer_reload(buffer)) {
 		fprintf(stderr, "error: buffer_find_mem: buffer_reload\n");
 		return -1;
 	}
 
 	while ((sp = memmem(bufptr, substr, size, bufsize)) == NULL) {
 		/* advance as much as we can */
-		if ((*offset = buffer_seek(buffer, bufsize - size, SEEK_CUR)) ==
-		    -1) {
+		if (buffer_seek(buffer, bufsize - size, SEEK_CUR)) {
 			reset = 1;
 			ret = -1;
 			goto die;
 		}
 
-		if (buffer_read(buffer) <= 0) {
-			reset = 1;
-			ret = -1;
-			goto die;
-		}
+		*offset = buffer_get_offset(buffer);
 
 		/* went past EOF, so it's not in the current file. */
 		if (*offset > filesize) {
@@ -76,15 +71,12 @@ int buffer_find_mem(buffer_t buffer, const char *substr, const size_t size,
 
 die:
 	if (reset) {
-		if (buffer_seek(buffer, original_offset, SEEK_SET) == -1)
+		if (buffer_seek(buffer, original_offset, SEEK_SET))
 			return -1;
 	} else {
-		if (buffer_seek(buffer, *offset, SEEK_SET) == -1)
+		if (buffer_seek(buffer, *offset, SEEK_SET))
 			return -1;
 	}
-
-	if (buffer_read(buffer) <= 0)
-		return -1;
 
 	return ret;
 }

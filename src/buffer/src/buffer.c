@@ -4,10 +4,20 @@
 #include <stdlib.h>
 #include <string.h>
 
-//#ifdef OS_LINUX
 #include <sys/stat.h>
-#include <unistd.h>
-//#endif
+
+#if defined(OS_WINDOWS)
+#include <io.h> /* low level file stuff */
+#elif defined(OS_LINUX)
+#include <unistd.h> /* low level file stuff */
+#define _open open
+#define _close close
+#define _read read
+#define _write write
+#define _lseek lseek
+#else
+#error "This library will not build."
+#endif
 
 /* defaults - you can override these when building this library */
 
@@ -102,7 +112,12 @@ size_t buffer_get_datalength(buffer_t buffer)
  */
 int buffer_open(buffer_t buffer, const char *path, int oflag)
 {
-	if ((buffer->filedes = open(path, oflag, S_IRUSR | S_IWUSR)) == -1)
+#if defined(OS_LINUX)
+	if ((buffer->filedes = _open(path, oflag, S_IRUSR | S_IWUSR)) == -1)
+#else
+	if ((buffer->filedes =
+		     _open(path, oflag | _O_BINARY, S_IRUSR | S_IWUSR)) == -1)
+#endif
 		return -1;
 
 	if (buffer_resize(buffer, buffer->buf.size))
@@ -122,7 +137,7 @@ int buffer_close(buffer_t buffer)
 	free(buffer->buf.ptr);
 	buffer->buf.ptr = NULL;
 
-	if (close(buffer->filedes))
+	if (_close(buffer->filedes))
 		return -1;
 
 	buffer->filedes = -1;
@@ -138,90 +153,50 @@ off_t buffer_get_filesize(buffer_t buffer)
 	return buf.st_size;
 }
 
-/**
- * set the position of the frame within the current file. doesn't refresh buffer.
- */
-off_t buffer_seek(buffer_t buffer, off_t offset, int whence)
+off_t buffer_get_offset(buffer_t buffer)
+{
+	return buffer->offset;
+}
+
+__inline__ int _buffer_seek(buffer_t buffer, off_t offset, int whence)
 {
 	if (whence == SEEK_CUR) {
 		offset = buffer->offset + offset;
 		whence = SEEK_SET;
 	}
 
-	if ((offset = lseek(buffer->filedes, offset, whence)) == -1)
+	if ((offset = _lseek(buffer->filedes, offset, whence)) == -1)
 		return -1;
 
 	buffer->offset = offset;
 
-	return offset;
-}
-
-/**
- * a more intuitive way of seeking to the start of the file
- */
-off_t buffer_rewind(buffer_t buffer)
-{
-	if (buffer_seek(buffer, 0, SEEK_SET) < 0) {
-		fprintf(stderr, "buffer_seek: ");
-		return -1;
-	}
-
-	buffer->offset = 0;
-
 	return 0;
 }
+int _buffer_seek(buffer_t buffer, off_t offset, int whence);
 
-off_t buffer_get_filepos(buffer_t buffer)
-{
-	return buffer->offset;
-}
-
-/**
- * load the current frame at the real file offset (modifies file offset, no seek)
- * Acts like a pager
- */
-int buffer_read(buffer_t buffer)
+__inline__ int _buffer_read(buffer_t buffer)
 {
 	ssize_t bytes_read;
-
-	if (buffer_seek(buffer, buffer->datalength, SEEK_CUR) < 0) {
-		fprintf(stderr, "buffer_seek: ");
-		return -1;
-	}
 
 	/* fill all of the buffer with zeroes */
 	memset(buffer->buf.ptr, 0, buffer->buf.size);
 
-	if ((bytes_read = read(buffer->filedes, buffer->buf.ptr,
-			       buffer->buf.size)) == -1)
+	if ((bytes_read = _read(buffer->filedes, buffer->buf.ptr,
+				buffer->buf.size)) == -1)
 		return -1;
 
-	return (buffer->datalength = bytes_read);
-}
+	buffer->datalength = bytes_read;
 
-/**
- * reload the current frame at the current position (doesn't modify file offset)
- */
-int buffer_reload(buffer_t buffer)
-{
-	buffer->datalength = 0;
-	return buffer_read(buffer);
+	return 0;
 }
+int _buffer_read(buffer_t buffer);
 
-/**
- * commit the current frame at the real file offset (modifies file offset and st_size, no seek)
- * Acts like a pager
- */
-int buffer_write(buffer_t buffer)
+__inline__ int _buffer_write(buffer_t buffer)
 {
-	// TODO: WRITE, DON'T READ.
 	ssize_t bytes_wrote;
 
-	if (buffer_seek(buffer, 0, SEEK_CUR) == -1)
-		return -1;
-
-	if ((bytes_wrote = write(buffer->filedes, buffer->buf.ptr,
-				 buffer->datalength)) == -1)
+	if ((bytes_wrote = _write(buffer->filedes, buffer->buf.ptr,
+				  buffer->datalength)) == -1)
 		return -1;
 
 	/* move remaining data to the front of the buffer, if any */
@@ -236,4 +211,35 @@ int buffer_write(buffer_t buffer)
 	buffer->offset += bytes_wrote;
 
 	return 0;
+}
+int _buffer_write(buffer_t buffer);
+
+int buffer_seek(buffer_t buffer, off_t offset, int whence)
+{
+	/* seek */
+	if (_buffer_seek(buffer, offset, whence))
+		return -1;
+
+	/* read */
+	return _buffer_read(buffer);
+}
+
+int buffer_rewind(buffer_t buffer)
+{
+	return buffer_seek(buffer, 0, SEEK_SET);
+}
+
+int buffer_reload(buffer_t buffer)
+{
+	return buffer_seek(buffer, 0, SEEK_CUR);
+}
+
+int buffer_write(buffer_t buffer)
+{
+	/* seek */
+	if (_buffer_seek(buffer, 0, SEEK_CUR))
+		return -1;
+
+	/* write */
+	return _buffer_write(buffer);
 }

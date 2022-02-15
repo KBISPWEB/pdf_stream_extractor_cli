@@ -5,6 +5,15 @@
 /* O_RDONLY, O_WRONLY, O_RDWR, etc. */
 #include <fcntl.h>
 
+#if defined(OS_WINDOWS)
+#elif defined(OS_LINUX)
+#define _O_RDONLY O_RDONLY
+#define _O_RDWR O_RDWR
+#define _O_WRONLY O_WRONLY
+#else
+#error "This library will not build."
+#endif
+
 #ifndef BUFFER_H
 #define BUFFER_H
 
@@ -54,35 +63,27 @@ int buffer_close(buffer_t buffer);
 off_t buffer_get_filesize(buffer_t buffer);
 
 /**
+ * get position in current file
+ * @param  buffer               [description]
+ * @return        positive offset from the beginning of the file, -1 on failure
+ */
+off_t buffer_get_offset(buffer_t buffer);
+
+/**
  * set the position of the frame within the current file. doesn't refresh buffer.
  * @param  buffer               [description]
  * @param  offset               [description]
  * @param  whence               [description]
  * @return        positive offset from the beginning of the file, -1 on failure
  */
-off_t buffer_seek(buffer_t buffer, off_t offset, int whence);
+int buffer_seek(buffer_t buffer, off_t offset, int whence);
 
 /**
  * a more intuitive way of seeking to the start of the file
  * @param  buffer               [description]
  * @return        positive offset from the beginning of the file, -1 on failure
  */
-off_t buffer_rewind(buffer_t buffer);
-
-/**
- * get position in current file
- * @param  buffer               [description]
- * @return        positive offset from the beginning of the file, -1 on failure
- */
-off_t buffer_get_filepos(buffer_t buffer);
-
-/**
- * load the current frame at the real file offset (modifies file offset, no seek)
- * Acts like a pager
- * @param  buffer               [description]
- * @return        0 on success, -1 on failure (see errno)
- */
-int buffer_read(buffer_t buffer);
+int buffer_rewind(buffer_t buffer);
 
 /**
  * reload the current frame at the current position (doesn't modify file offset)
