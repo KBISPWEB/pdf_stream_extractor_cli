@@ -12,6 +12,12 @@
 
 #include "stream_scanner.h" /* this includes the buffer library */
 
+#if defined(OS_WINDOWS)
+#include <direct.h>
+#elif defined(OS_LINUX)
+#include <sys/stat.h>
+#endif
+
 filext_table_t filext_records = FILEXT_TABLE(FILEXT_RECORD(
 	FILEXT_SIGNATURE(0x30, 0x26, 0xb2, 0x75, 0x8e, 0x66, 0xcf),
 	FILEXT_OFFSETS(0), "wmv"));
@@ -271,13 +277,15 @@ int main(int argc, char *argv[])
 	int i, stream;
 
 	char *filename = NULL;
-	char dataname[256];
+	char dataname[1024];
 
 	size_t objlen = 0;
 	off_t streamstart = 0;
 	off_t objend = 0;
 
 	size_t orig_size;
+
+	fputs("Starting up, this may take a while.\n", stdout);
 
 	if (atexit(cleanup)) {
 		fputs("The function could not be registered.\n", stderr);
@@ -302,7 +310,6 @@ int main(int argc, char *argv[])
 		filename = argv[i];
 
 		printf("Using %s .\n", filename);
-		fputs("Starting up, this may take a while.\n", stdout);
 		fflush(stdout);
 
 #ifdef DEBUG
@@ -343,6 +350,14 @@ int main(int argc, char *argv[])
 			error++;
 			goto no_go;
 		}
+		/* create directory for data */
+		sprintf(dataname, "%s.data", basename(filename));
+
+#if defined(OS_WINDOWS)
+		_mkdir(dataname);
+#elif defined(OS_LINUX)
+		mkdir(dataname, S_IRUSR | S_IWUSR);
+#endif
 
 		// TODO: Do this until there are no more streams.
 		stream = 0;
@@ -379,8 +394,13 @@ int main(int argc, char *argv[])
 				}
 
 				/* create filename for data */
-				sprintf(dataname, "%s.data.%d",
+#if defined(OS_WINDOWS)
+				sprintf(dataname, "%s.data\\%d",
 					basename(filename), stream);
+#else
+				sprintf(dataname, "%s.data/%d",
+					basename(filename), stream);
+#endif
 
 				uncompress_and_save(buffer, dataname);
 
