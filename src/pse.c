@@ -162,7 +162,6 @@ int uncompress_and_save(buffer_t buffer_in, char *path)
 			}
 			/* couldn't recover from Z_BUF_ERROR */
 			if (ret != Z_OK) {
-				fputs("X\n", stdout);
 				fprintf(stderr, "error in processing %s. (%d)",
 					path, ret);
 				if (ret == -3) {
@@ -203,8 +202,6 @@ int uncompress_and_save(buffer_t buffer_in, char *path)
 
 			break;
 		}
-		fputc('.', stdout);
-
 #ifdef DEBUG
 		printf("DEBUG: infstream parameters: {\n\tnext_in: %lx\n\tavail_in: %ld\n\tnext_out: %lx\n\tavail_out: %ld\n}\n",
 		       infstream.next_in, infstream.avail_in,
@@ -215,7 +212,6 @@ int uncompress_and_save(buffer_t buffer_in, char *path)
 	} while (ret == Z_OK);
 
 	inflateEnd(&infstream);
-	fputs("OK\n", stdout);
 
 	newpath = malloc(strlen(path) + 5);
 	strcpy(newpath, path);
@@ -355,11 +351,10 @@ int main(int argc, char *argv[])
 			// TODO: make sure stream data is OK to uncompress.
 			if (strstr(buffer_get_bufptr(buffer),
 				   "/Filter/FlateDecode/") != NULL) {
-#ifdef DEBUG
-				printf("DEBUG: found stream starting at position %ld, obj length is:%ld\n",
+				printf("Found stream starting at position %ld, obj length is:%ld\n",
 				       buffer_get_offset(buffer), objlen);
 				fflush(stdout);
-#endif
+
 				objend = buffer_get_offset(buffer) + objlen;
 
 				if ((ret = buffer_find_mem(buffer, "stream\r\n",
