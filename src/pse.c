@@ -305,6 +305,10 @@ int main(int argc, char *argv[])
 	for (i = 1; i < argc; i++) {
 		filename = argv[i];
 
+		printf("Using %s .\n", filename);
+		fputs("Starting up, this may take a while.\n", stdout);
+		fflush(stdout);
+
 #ifdef DEBUG
 		printf("DEBUG: Opening %s\n", filename);
 		fflush(stdout);
