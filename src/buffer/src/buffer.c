@@ -39,6 +39,59 @@ struct buffer {
 	int read;
 };
 
+int _buffer_seek(buffer_t buffer, off_t offset, int whence)
+{
+	if (whence == SEEK_CUR) {
+		offset = buffer->offset + offset;
+		whence = SEEK_SET;
+	}
+
+	if ((offset = _lseek(buffer->filedes, offset, whence)) == -1)
+		return -1;
+
+	buffer->offset = offset;
+
+	return 0;
+}
+
+int _buffer_read(buffer_t buffer)
+{
+	ssize_t bytes_read;
+
+	/* fill all of the buffer with zeroes */
+	memset(buffer->buf.ptr, 0, buffer->buf.size);
+
+	if ((bytes_read = _read(buffer->filedes, buffer->buf.ptr,
+				buffer->buf.size)) == -1)
+		return -1;
+
+	buffer->datalength = bytes_read;
+
+	return 0;
+}
+
+int _buffer_write(buffer_t buffer)
+{
+	ssize_t bytes_wrote;
+
+	if ((bytes_wrote = _write(buffer->filedes, buffer->buf.ptr,
+				  buffer->datalength)) == -1)
+		return -1;
+
+	/* move remaining data to the front of the buffer, if any */
+	if (bytes_wrote < buffer->datalength)
+		memmove(buffer->buf.ptr, buffer->buf.ptr + bytes_wrote,
+			buffer->datalength - bytes_wrote);
+
+	/* fill the rest of the buffer with zeroes */
+	memset(buffer->buf.ptr + bytes_wrote, 0,
+	       buffer->datalength - bytes_wrote);
+
+	buffer->offset += bytes_wrote;
+
+	return 0;
+}
+
 buffer_t buffer_init()
 {
 	buffer_t buffer = malloc(sizeof(struct buffer));
@@ -126,6 +179,9 @@ int buffer_open(buffer_t buffer, const char *path, int oflag)
 	/* ALWAYS initialize this memory */
 	memset(buffer->buf.ptr, 0, buffer->buf.size);
 
+	if (_buffer_seek(buffer, 0, SEEK_SET))
+		return -1;
+
 	return 0;
 }
 
@@ -143,6 +199,11 @@ int buffer_close(buffer_t buffer)
 	buffer->filedes = -1;
 }
 
+int buffer_get_filedes(buffer_t buffer)
+{
+	return buffer->filedes;
+}
+
 off_t buffer_get_filesize(buffer_t buffer)
 {
 	struct stat buf;
@@ -157,62 +218,6 @@ off_t buffer_get_offset(buffer_t buffer)
 {
 	return buffer->offset;
 }
-
-__inline__ int _buffer_seek(buffer_t buffer, off_t offset, int whence)
-{
-	if (whence == SEEK_CUR) {
-		offset = buffer->offset + offset;
-		whence = SEEK_SET;
-	}
-
-	if ((offset = _lseek(buffer->filedes, offset, whence)) == -1)
-		return -1;
-
-	buffer->offset = offset;
-
-	return 0;
-}
-int _buffer_seek(buffer_t buffer, off_t offset, int whence);
-
-__inline__ int _buffer_read(buffer_t buffer)
-{
-	ssize_t bytes_read;
-
-	/* fill all of the buffer with zeroes */
-	memset(buffer->buf.ptr, 0, buffer->buf.size);
-
-	if ((bytes_read = _read(buffer->filedes, buffer->buf.ptr,
-				buffer->buf.size)) == -1)
-		return -1;
-
-	buffer->datalength = bytes_read;
-
-	return 0;
-}
-int _buffer_read(buffer_t buffer);
-
-__inline__ int _buffer_write(buffer_t buffer)
-{
-	ssize_t bytes_wrote;
-
-	if ((bytes_wrote = _write(buffer->filedes, buffer->buf.ptr,
-				  buffer->datalength)) == -1)
-		return -1;
-
-	/* move remaining data to the front of the buffer, if any */
-	if (bytes_wrote < buffer->datalength)
-		memmove(buffer->buf.ptr, buffer->buf.ptr + bytes_wrote,
-			buffer->datalength - bytes_wrote);
-
-	/* fill the rest of the buffer with zeroes */
-	memset(buffer->buf.ptr + bytes_wrote, 0,
-	       buffer->datalength - bytes_wrote);
-
-	buffer->offset += bytes_wrote;
-
-	return 0;
-}
-int _buffer_write(buffer_t buffer);
 
 int buffer_seek(buffer_t buffer, off_t offset, int whence)
 {

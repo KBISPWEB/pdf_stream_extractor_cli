@@ -134,6 +134,12 @@ int uncompress_and_save(buffer_t buffer_in, char *path)
 					fputs("buffer_write: ", stderr);
 					fputs(strerror(errno), stderr);
 					fputc('\n', stderr);
+					fprintf(stderr, "%d %lx %ld %ld\n",
+						buffer_get_filedes(buffer_out),
+						buffer_get_bufptr(buffer_out),
+						buffer_get_offset(buffer_out),
+						buffer_get_datalength(
+							buffer_out));
 					goto die;
 				}
 
@@ -196,6 +202,11 @@ int uncompress_and_save(buffer_t buffer_in, char *path)
 				fputs("buffer_write: ", stderr);
 				fputs(strerror(errno), stderr);
 				fputc('\n', stderr);
+				fprintf(stderr, "%d %lx %ld %ld\n",
+					buffer_get_filedes(buffer_out),
+					buffer_get_bufptr(buffer_out),
+					buffer_get_offset(buffer_out),
+					buffer_get_datalength(buffer_out));
 				goto die;
 			}
 
@@ -356,7 +367,7 @@ int main(int argc, char *argv[])
 #if defined(OS_WINDOWS)
 		_mkdir(dataname);
 #elif defined(OS_LINUX)
-		mkdir(dataname, S_IRUSR | S_IWUSR);
+		mkdir(dataname, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
 #endif
 
 		// TODO: Do this until there are no more streams.

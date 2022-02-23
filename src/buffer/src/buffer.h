@@ -35,6 +35,8 @@ void buffer_free(buffer_t buffer);
  */
 int buffer_resize(buffer_t buffer, size_t size);
 
+int buffer_get_filedes(buffer_t buffer);
+off_t buffer_get_filesize(buffer_t buffer);
 void *buffer_get_bufptr(buffer_t buffer);
 size_t buffer_get_bufsize(buffer_t buffer);
 int buffer_set_datalength(buffer_t buffer, size_t datalength);
@@ -54,13 +56,6 @@ int buffer_open(buffer_t buffer, const char *path, int oflag);
  * @return        0 on success, -1 on failure (see errno)
  */
 int buffer_close(buffer_t buffer);
-
-/**
- * get size of current file
- * @param  buffer               [description]
- * @return        positive number representing the size of the file, -1 on failure
- */
-off_t buffer_get_filesize(buffer_t buffer);
 
 /**
  * get position in current file
