@@ -7,9 +7,9 @@ aren't able to extract what you want.
 
 This tool attempts to figure out what kind of data was in the FlateDecode
 stream by matching file signatures. If it's able to determine file type, the
-data will be saved with the appropriate file filext.
+data will be saved with the appropriate file extension.
 
-The relational database of file signatures to file filexts is manually
+The relational database of file signatures to file extensions is manually
 programmed into this application. One day, I may restructure that to be a
 configuration file.
 
