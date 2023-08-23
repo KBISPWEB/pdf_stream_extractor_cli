@@ -5,7 +5,8 @@
 
 #include "stream_scanner.h"
 
-const void *memmem(const void *s1, const void *s2, size_t n, const size_t size)
+const void *stream_memmem(const void *s1, const void *s2, size_t n,
+			  const size_t size)
 {
 	size_t offset = 0;
 	void *sp;
@@ -48,7 +49,7 @@ int buffer_find_mem(buffer_t buffer, const char *substr, const size_t size,
 		return -1;
 	}
 
-	while ((sp = memmem(bufptr, substr, size, bufsize)) == NULL) {
+	while ((sp = stream_memmem(bufptr, substr, size, bufsize)) == NULL) {
 		/* advance as much as we can */
 		if (buffer_seek(buffer, bufsize - size, SEEK_CUR)) {
 			reset = 1;
